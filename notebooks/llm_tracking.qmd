@@ -1,5 +1,5 @@
 ---
-title: "Tracking the Emissions of Large Language Models"
+title: "SusAI Demo: Tracking the Emissions of Large Language Models"
 subtitle: "Estimating the energy and emissions of LLM sentiment analysis with EcoLogits"
 jupyter:
   kernelspec:

@@ -1,5 +1,5 @@
 ---
-title: "Getting Started with CodeCarbon and EcoLogits"
+title: "SusAI Demo: Getting Started with CodeCarbon and EcoLogits"
 subtitle: "Measuring the energy and emissions of Python programs"
 jupyter:
   kernelspec:

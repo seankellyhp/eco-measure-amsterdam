@@ -1,5 +1,5 @@
 ---
-title: "Tracking the Emissions of Sentiment Analysis"
+title: "SusAI Demo: Tracking the Emissions of Sentiment Analysis"
 subtitle: "Measuring and benchmarking dictionary and transformer sentiment analysis with CodeCarbon"
 jupyter:
   kernelspec:
