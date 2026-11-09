@@ -98,7 +98,7 @@ uv add transformers torch
 polars holds the data and the measurements, and plotnine draws them.
 scikit-learn [@pedregosa:2011:sklearn] fits the topic model, and NLTK
 [@bird:2009:nltk] provides the stop words, the sentence tokenizer and the
-second sentiment dictionary. transformers [@wolf:2020:transformers] and
+VADER sentiment analyzer. transformers [@wolf:2020:transformers] and
 PyTorch run a sentiment model locally, and openai and pydantic send the
 requests to the hosted language model.
 pyarrow is what plotnine uses to read a polars table.

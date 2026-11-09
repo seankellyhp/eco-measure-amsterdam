@@ -63,19 +63,19 @@ austen_books = pl.read_csv("../data/austen_books.csv").with_columns(
 )
 ```
 
-NLTK provides the sentence tokenizer, the word tokenizer, and the second
-sentiment dictionary [@bird:2009:nltk]. NLTK downloads them once, here into
+NLTK provides the sentence tokenizer and the VADER sentiment analyzer
+[@bird:2009:nltk]. NLTK downloads them once, here into
 the project's virtual environment, one of the folders NLTK searches:
 
 ```{python}
 nltk.download(
-    ["punkt_tab", "opinion_lexicon"],
+    ["punkt_tab", "vader_lexicon"],
     download_dir=f"{sys.prefix}/nltk_data",
     quiet=True,
 )
 
-from nltk.corpus import opinion_lexicon
-from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.sentiment import SentimentIntensityAnalyzer
+from nltk.tokenize import sent_tokenize
 ```
 
 Each tracker is created with the same settings, so keep them in one place. A
@@ -147,9 +147,9 @@ books = austen_books.with_columns(
 ## Comparisons of Simple Sentiment Analysis Approaches
 
 Next we will use three approaches for sentiment analysis, with a focus on
-comparing their emissions: the same dictionary method, written with polars
-and with NLTK, and a transformer model that has learned sentiment from
-labeled examples.
+comparing their emissions: a word count with the Bing dictionary, written
+with polars; NLTK's VADER, a dictionary with rules; and a transformer model
+that has learned sentiment from labeled examples.
 
 ### Data Preparation
 
@@ -247,13 +247,27 @@ sentence as a whole. Hugging Face's transformers package [@wolf:2020:transformer
 wraps a model, its tokenizer and the steps around them in a `pipeline()`.
 The model here is DistilBERT [@sanh:2019:distilbert], fine-tuned to label
 English sentences as positive or negative. The pipeline downloads it
-(about 270 MB) the first time, and runs on the GPU if there is one:
+(about 270 MB) the first time.
+
+The model runs on a GPU if there is one: an NVIDIA GPU (on Colab, a GPU
+runtime), or the GPU of an Apple Silicon Mac. Otherwise it runs on the CPU:
+
+```{python}
+if torch.cuda.is_available():
+    device = "cuda"
+elif torch.backends.mps.is_available():
+    device = "mps"
+else:
+    device = "cpu"
+
+print(f"The model runs on: {device}")
+```
 
 ```{python}
 classifier = pipeline(
     "sentiment-analysis",
     model="distilbert-base-uncased-finetuned-sst-2-english",
-    device=0 if torch.cuda.is_available() else -1,
+    device=device,
 )
 
 classifier(["I love this book.", "I hate this book."])
@@ -309,18 +323,38 @@ sentences labeled by hand.
 
 ### Benchmark: polars, NLTK or transformers?
 
-The same dictionary approach can be written with NLTK [@bird:2009:nltk],
-which includes the same sentiment lexicon (`opinion_lexicon`) and its own
-sentence and word tokenizers, downloaded in the setup:
+NLTK [@bird:2009:nltk] has a sentiment analyzer of its own, VADER
+[@hutto:2014:vader]. It is also built on a dictionary, but each word in it
+has a strength, not just a sign, and rules adjust them: for negation ("not
+good"), for words like "very", for capital letters and for exclamation
+marks. `polarity_scores()` sums them into a `compound` score from -1 to 1:
 
 ```{python}
-positive_words = set(opinion_lexicon.positive())
-negative_words = set(opinion_lexicon.negative())
+sia = SentimentIntensityAnalyzer()
+
+sia.polarity_scores("I love this product! It's amazing.")
 ```
 
-To compare the two packages fairly, both start from the same texts from
-*Pride and Prejudice*, one row per chapter. Both then split the chapters into
-sentences, tokenize them and score every sentence.
+VADER's authors call a sentence positive when its compound score is at least
+0.05, negative when it is at most -0.05, and neutral in between:
+
+```{python}
+def get_vader_sentiment(text):
+    compound = sia.polarity_scores(text)["compound"]
+    if compound >= 0.05:
+        return "positive"
+    elif compound <= -0.05:
+        return "negative"
+    else:
+        return "neutral"
+
+
+get_vader_sentiment("I love this product! It's amazing.")
+```
+
+To compare the three approaches fairly, all start from the same texts from
+*Pride and Prejudice*, one row per chapter. All then split the chapters into
+sentences and label every sentence.
 
 ```{python}
 def sentiment_polars(texts):
@@ -328,18 +362,8 @@ def sentiment_polars(texts):
 
 
 def score_with_nltk(sentences):
-    scores = [
-        sum((word in positive_words) - (word in negative_words) for word in word_tokenize(sentence.lower()))
-        for sentence in sentences
-    ]
-    return pl.DataFrame({"id": range(1, len(scores) + 1), "score": scores}).select(
-        "id",
-        sentiment=pl.when(pl.col("score") > 0)
-        .then(pl.lit("positive"))
-        .when(pl.col("score") < 0)
-        .then(pl.lit("negative"))
-        .otherwise(pl.lit("neutral")),
-    )
+    labels = [get_vader_sentiment(sentence) for sentence in sentences]
+    return pl.DataFrame({"id": range(1, len(labels) + 1), "sentiment": labels})
 
 
 def sentiment_nltk(texts):
@@ -353,9 +377,11 @@ def sentiment_transformers(texts):
 ```
 
 All three split the chapters with NLTK's sentence tokenizer; only the way they
-label each sentence differs. To compare their labels, score the same
-sentences, `pride`, with both. The confusion matrix shows that they
-largely agree:
+label each sentence differs. To compare the two dictionaries' labels, score
+the same sentences, `pride`, with VADER. The confusion matrix shows that
+they agree on about two sentences in three. VADER finds sentiment in many
+sentences the Bing count leaves neutral, and it more often calls a sentence
+positive:
 
 ```{python}
 nltk_labels = score_with_nltk(pride["sentence"])
@@ -408,9 +434,9 @@ def plot_bench(bench, metric="energy_consumed"):
 ```
 
 Compare the three, 10 times each. The transformer model takes up most of
-the time: about a minute per run on a fast desktop CPU, and more on a laptop
-or on Colab's CPU, so the benchmark takes ten minutes or more. On Colab, a
-GPU runtime (*Runtime > Change runtime type*) speeds it up:
+the time: on a CPU, about a minute per run on a fast desktop, and more on a
+laptop or on Colab, so the benchmark takes ten minutes or more. A GPU speeds
+it up; on Colab, choose one under *Runtime > Change runtime type*:
 
 ```{python}
 random.seed(1234)

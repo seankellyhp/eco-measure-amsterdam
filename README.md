@@ -13,7 +13,7 @@ are meant to be read in this order:
 | Notebook | | |
 |---|---|---|
 | [getting-started.ipynb](notebooks/getting-started.ipynb) | Measure the energy and emissions of an existing Python script, and of each step of a pipeline (an LDA topic model). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting-started.ipynb) |
-| [sentiment_tracking.ipynb](notebooks/sentiment_tracking.ipynb) | Measure dictionary and transformer (DistilBERT) sentiment analysis, and benchmark polars, NLTK and transformers against each other. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/sentiment_tracking.ipynb) |
+| [sentiment_tracking.ipynb](notebooks/sentiment_tracking.ipynb) | Measure dictionary and transformer (DistilBERT) sentiment analysis, and benchmark the Bing dictionary in polars, NLTK's VADER and transformers against each other. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/sentiment_tracking.ipynb) |
 | [llm_tracking.ipynb](notebooks/llm_tracking.ipynb) | Estimate the energy and emissions of sentiment analysis with a hosted language model, with EcoLogits. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/llm_tracking.ipynb) |
 
 ## Option A: Google Colab (nothing to install)
@@ -41,8 +41,9 @@ two notebooks are next to it in the `notebooks` folder, in the file browser on t
 Ctrl+C stops Jupyter. The data are in [data/](data/). NLTK downloads its
 tokenizer models and lexicon into the virtual environment on the first run,
 and transformers downloads its sentiment model (about 270 MB) into the
-Hugging Face cache. On Linux and Windows, uv installs the CPU-only build of
-PyTorch, which is much smaller than the default CUDA build.
+Hugging Face cache. The sentiment model runs on an NVIDIA GPU if there is
+one (on Linux and Windows, PyTorch's CUDA libraries are a download of several
+GB), and on the CPU otherwise.
 
 ## The language model section
 

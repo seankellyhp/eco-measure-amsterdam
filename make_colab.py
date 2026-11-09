@@ -29,6 +29,8 @@ import warnings
 from pathlib import Path
 
 if "google.colab" in sys.modules:
+    # Colab's GPU runtime has cudf-polars, which needs an older polars; these notebooks do not use it.
+    %pip uninstall -q -y cudf-polars-cu13 cudf-polars-cu12
     %pip install -q -U codecarbon "ecologits[openai]" polars plotnine
 
 # The notebooks read the data from ../data, the data folder of the repository.
@@ -75,7 +77,7 @@ the top first, then the cells in order, from top to bottom.
 polars holds the data and the measurements, and plotnine draws them.
 scikit-learn [@pedregosa:2011:sklearn] fits the topic model, and NLTK
 [@bird:2009:nltk] provides the stop words, the sentence tokenizer and the
-second sentiment dictionary. transformers [@wolf:2020:transformers] and
+VADER sentiment analyzer. transformers [@wolf:2020:transformers] and
 PyTorch run a sentiment model locally, and openai and pydantic send the
 requests to the hosted language model.
 
