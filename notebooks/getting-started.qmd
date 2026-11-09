@@ -97,7 +97,7 @@ uv add transformers torch
 
 polars holds the data and the measurements, and plotnine draws them.
 scikit-learn [@pedregosa:2011:sklearn] fits the topic model, and NLTK
-[@bird:2009:nltk] provides the stop words, the sentence tokenizer and the
+[@bird:2009:nltk] provides the stop words, the word and sentence tokenizers and the
 VADER sentiment analyzer. transformers [@wolf:2020:transformers] and
 PyTorch run a sentiment model locally, and openai and pydantic send the
 requests to the hosted language model.
@@ -181,7 +181,7 @@ from pathlib import Path
 import nltk
 import polars as pl
 from codecarbon import OfflineEmissionsTracker
-from plotnine import aes, coord_flip, geom_col, ggplot, labs
+from plotnine import aes, coord_flip, geom_col, geom_point, ggplot, labs
 from scipy.sparse import csr_matrix
 
 # more advanced analyses downstream
@@ -194,15 +194,21 @@ austen_books = pl.read_csv("../data/austen_books.csv").with_columns(
 )
 ```
 
-The stop words are NLTK's standard English list [@bird:2009:nltk]. NLTK's
+The stop words are NLTK's standard English list, and NLTK's word tokenizer
+splits text into words [@bird:2009:nltk]. NLTK's
 lists, lexicons and tokenizer models are data of their own, which NLTK
 downloads once. Here they go into the project's virtual environment, one of
 the folders NLTK searches:
 
 ```{python}
-nltk.download("stopwords", download_dir=f"{sys.prefix}/nltk_data", quiet=True)
+nltk.download(
+    ["stopwords", "punkt_tab"],
+    download_dir=f"{sys.prefix}/nltk_data",
+    quiet=True,
+)
 
 from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 
 stop_words = pl.DataFrame({"word": stopwords.words("english")})
 ```
@@ -224,19 +230,23 @@ function of its own:
 def unnest_tokens(data, column):
     """Split text into words, one row each, like tidytext's unnest_tokens().
 
-    The text is lower-cased, and a word is a run of letters and digits,
-    with an apostrophe inside it kept ("don't").
+    NLTK's word tokenizer finds the words, which are then lower-cased.
+    Tokens with no letter or digit in them (punctuation) are dropped, and
+    so are the "'s" and "n't" that the tokenizer splits off words.
     """
     return (
         data
         .with_columns(
             pl.col(column)
-            .str.to_lowercase()
-            .str.extract_all(r"[\p{L}\p{N}]+(?:'[\p{L}]+)*").alias("word")
+            .map_elements(word_tokenize, return_dtype=pl.List(pl.String)).alias("word")
         )
         .drop(column)
         .explode("word")
-        .drop_nulls("word")
+        .with_columns(pl.col("word").str.to_lowercase())
+        .filter(
+            pl.col("word").str.contains(r"[\p{L}\p{N}]"),
+            ~pl.col("word").is_in(["'s", "n't"]),
+        )
     )
 ```
 
@@ -431,6 +441,83 @@ When an LDA is fit on larger data, with more topics, or with more fits to find
 the optimal number of topics (k), these numbers increase. Yet they are hardly
 noticeable compared to ever more complex fine-tuning of transformer models or
 inference with large language models.
+
+### Optimizing a Tokenizer
+
+The tokenizing above uses NLTK's word tokenizer, the standard choice, which
+runs as Python code on each line of text. polars can split text into words
+too, with a regular expression that runs in its Rust engine.
+`unnest_tokens_fast()` does that: a word is a run of letters and digits,
+with an apostrophe inside it kept ("don't"):
+
+```{python}
+def unnest_tokens_fast(data, column):
+    """Split text into words, one row each, like tidytext's unnest_tokens().
+
+    The text is lower-cased, and a word is a run of letters and digits,
+    with an apostrophe inside it kept ("don't").
+    """
+    return (
+        data
+        .with_columns(
+            pl.col(column)
+            .str.to_lowercase()
+            .str.extract_all(r"[\p{L}\p{N}]+(?:'[\p{L}]+)*").alias("word")
+        )
+        .drop(column)
+        .explode("word")
+        .drop_nulls("word")
+    )
+```
+
+Which is faster, and by how much? Guessing is easy; measuring is better. Run
+each tokenizer on the chapters five times, in turn, each run as a task of its
+own:
+
+```{python}
+tokenizers = {"nltk": unnest_tokens, "polars": unnest_tokens_fast}
+times = 5
+
+tracker = OfflineEmissionsTracker(project_name="tokenizer benchmark", **tracker_args)
+
+rows = []
+try:
+    for i in range(1, times + 1):
+        for name, tokenize in tokenizers.items():
+            tracker.start_task(f"{name}_{i}")
+            tokenize(chapters, "text")
+            task = tracker.stop_task()
+            rows.append({"tokenizer": name, "iter": i, **vars(task)})
+finally:
+    tracker.stop()
+
+tokenizer_bench = pl.DataFrame(rows).with_columns(
+    energy_wh=pl.col("energy_consumed") * 1000
+)
+
+tokenizer_bench.group_by("tokenizer", maintain_order=True).agg(
+    duration_sec=pl.col("duration").median(),
+    energy_wh=pl.col("energy_wh").median(),
+)
+```
+
+Each point is one run:
+
+```{python}
+#| label: tokenizer-plot
+ggplot(tokenizer_bench, aes("tokenizer", "energy_wh")) + geom_point(
+    size=3, alpha=0.7
+) + labs(x="", y="Energy (Wh)")
+```
+
+The regular expression is about two orders of magnitude faster than NLTK,
+and uses as much less energy. The two do not split text identically, though:
+NLTK keeps "mr." with its full stop and hyphenated words such as
+"drawing-room" whole, which the regular expression splits apart. Whether
+that difference is worth the energy is a choice for the analysis at hand;
+a benchmark turns the choice from a guess into a measurement. It is also
+cheap: a few runs of each candidate, before a pipeline is run on a large
+corpus, can save far more energy than they use.
 
 ## Next Steps
 

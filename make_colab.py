@@ -76,7 +76,7 @@ the top first, then the cells in order, from top to bottom.
 
 polars holds the data and the measurements, and plotnine draws them.
 scikit-learn [@pedregosa:2011:sklearn] fits the topic model, and NLTK
-[@bird:2009:nltk] provides the stop words, the sentence tokenizer and the
+[@bird:2009:nltk] provides the stop words, the word and sentence tokenizers and the
 VADER sentiment analyzer. transformers [@wolf:2020:transformers] and
 PyTorch run a sentiment model locally, and openai and pydantic send the
 requests to the hosted language model.

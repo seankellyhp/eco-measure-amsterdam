@@ -63,7 +63,7 @@ austen_books = pl.read_csv("../data/austen_books.csv").with_columns(
 )
 ```
 
-NLTK provides the sentence tokenizer and the VADER sentiment analyzer
+NLTK provides the word and sentence tokenizers and the VADER sentiment analyzer
 [@bird:2009:nltk]. NLTK downloads them once, here into
 the project's virtual environment, one of the folders NLTK searches:
 
@@ -75,7 +75,7 @@ nltk.download(
 )
 
 from nltk.sentiment import SentimentIntensityAnalyzer
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize, word_tokenize
 ```
 
 Each tracker is created with the same settings, so keep them in one place. A
@@ -96,19 +96,23 @@ Getting Started:
 def unnest_tokens(data, column):
     """Split text into words, one row each, like tidytext's unnest_tokens().
 
-    The text is lower-cased, and a word is a run of letters and digits,
-    with an apostrophe inside it kept ("don't").
+    NLTK's word tokenizer finds the words, which are then lower-cased.
+    Tokens with no letter or digit in them (punctuation) are dropped, and
+    so are the "'s" and "n't" that the tokenizer splits off words.
     """
     return (
         data
         .with_columns(
             pl.col(column)
-            .str.to_lowercase()
-            .str.extract_all(r"[\p{L}\p{N}]+(?:'[\p{L}]+)*").alias("word")
+            .map_elements(word_tokenize, return_dtype=pl.List(pl.String)).alias("word")
         )
         .drop(column)
         .explode("word")
-        .drop_nulls("word")
+        .with_columns(pl.col("word").str.to_lowercase())
+        .filter(
+            pl.col("word").str.contains(r"[\p{L}\p{N}]"),
+            ~pl.col("word").is_in(["'s", "n't"]),
+        )
     )
 
 
