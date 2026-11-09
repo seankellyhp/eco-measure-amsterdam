@@ -30,14 +30,14 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 git clone https://github.com/seankellyhp/eco-measure-amsterdam
 cd eco-measure-amsterdam
 uv sync
-uv run jupyter lab --config jupyter_server_config.py
+uv run jupyter lab notebooks/getting-started.ipynb
 ```
 
 `uv sync` installs Python and every package, at the versions in
-[uv.lock](uv.lock). The last command opens the notebook in your browser, with no token
-or password ([jupyter_server_config.py](jupyter_server_config.py)). If no browser
-opens, go to <http://localhost:8888>. Jupyter opens Getting Started; the other
-two notebooks are next to it in the `notebooks` folder, in the file browser on the left. Leave the terminal open while you work;
+[uv.lock](uv.lock). The last command opens Getting Started in your browser; if
+no browser opens, copy the `http://localhost:8888/...` link that Jupyter prints in
+the terminal. The other two notebooks are next to it in the `notebooks` folder, in
+the file browser on the left. Leave the terminal open while you work;
 Ctrl+C stops Jupyter. The data are in [data/](data/). NLTK downloads its
 tokenizer models and lexicon into the virtual environment on the first run,
 and transformers downloads its sentiment model (about 270 MB) into the
@@ -61,11 +61,6 @@ OPENROUTER_API_KEY=sk-or-...
 
 | File | |
 |---|---|
-| [notebooks/](notebooks/) | The three notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`). |
-| [notebooks/getting-started.html](notebooks/getting-started.html) | The tutorial rendered with all outputs, to read along. |
+| [notebooks/](notebooks/) | The three notebooks. |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
-
-The notebooks are generated from the Quarto sources. After editing a `.qmd`
-file, rebuild all three notebooks with `python make_colab.py` (needs pandoc,
-which comes with Quarto), and render the HTML with
-`uv run quarto render notebooks/<name>.qmd`.
+| [figures/](figures/) | Images used in the notebooks. |
