@@ -490,12 +490,12 @@ def unnest_tokens_fast(data, column):
 ```
 
 Which is faster, and by how much? Guessing is easy; measuring is better. Run
-each tokenizer on the chapters five times, in turn, each run as a task of its
+each tokenizer on the chapters three times, in turn, each run as a task of its
 own:
 
 ```{python}
 tokenizers = {"nltk": unnest_tokens, "polars": unnest_tokens_fast}
-times = 5
+times = 3
 
 tracker = OfflineEmissionsTracker(project_name="tokenizer benchmark", **tracker_args)
 

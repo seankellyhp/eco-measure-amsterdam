@@ -16,6 +16,8 @@ execute:
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/sentiment_tracking.ipynb)&nbsp;
 
+> **Note:** On Colab, change the runtime type to a GPU (such as a T4) for faster analysis: **Runtime → Change runtime type → T4 GPU**. The transformer model runs much faster on a GPU than on the CPU.
+
 ```{python}
 # Setup. On Colab: install the packages Colab does not have, and download the data.
 # Locally (uv sync), everything is already installed and in the repository.
@@ -107,8 +109,10 @@ tracker_args = dict(output_dir=log_dir, country_iso_code="DEU", log_level="error
 ```
 
 Splitting text into words, and into sentences, is needed several times below,
-so each gets a function of its own. `unnest_tokens()` is the same as in
-Getting Started:
+so each gets a function of its own. `unnest_tokens()` and
+`unnest_tokens_fast()` are the same as in Getting Started: the first uses
+NLTK's word tokenizer, the second a regular expression in polars, which is
+about two orders of magnitude faster:
 
 ```{python}
 def unnest_tokens(data, column):
@@ -131,6 +135,25 @@ def unnest_tokens(data, column):
             pl.col("word").str.contains(r"[\p{L}\p{N}]"),
             ~pl.col("word").is_in(["'s", "n't"]),
         )
+    )
+
+
+def unnest_tokens_fast(data, column):
+    """Split text into words, one row each, like tidytext's unnest_tokens().
+
+    The text is lower-cased, and a word is a run of letters and digits,
+    with an apostrophe inside it kept ("don't").
+    """
+    return (
+        data
+        .with_columns(
+            pl.col(column)
+            .str.to_lowercase()
+            .str.extract_all(r"[\p{L}\p{N}]+(?:'[\p{L}]+)*").alias("word")
+        )
+        .drop(column)
+        .explode("word")
+        .drop_nulls("word")
     )
 
 
@@ -210,15 +233,19 @@ pride
 
 The first approach is to split sentences into words, join the Bing lexicon
 [@hu:2004:mining], and count positive against negative words. A sentence
-with no lexicon word, or as many positive as negative ones, is neutral:
+with no lexicon word, or as many positive as negative ones, is neutral.
+The words come from `unnest_tokens_fast()` by default; pass
+`tokenize=unnest_tokens` to use NLTK's tokenizer instead. The regular
+expression splits hyphenated words apart, so the Bing entries with a hyphen
+in them (such as "well-known") only match with NLTK's tokenizer:
 
 ```{python}
 bing = pl.read_csv("../data/bing.csv")
 
 
-def score_with_dictionary(data):
+def score_with_dictionary(data, tokenize=unnest_tokens_fast):
     scores = (
-        unnest_tokens(data.select("id", "sentence"), "sentence")
+        tokenize(data.select("id", "sentence"), "sentence")
         .join(bing, on="word")
         .group_by("id")
         .agg(score=pl.when(pl.col("sentiment") == "positive").then(1).otherwise(-1).sum())
@@ -260,6 +287,77 @@ second. The labels:
 
 ```{python}
 dictionary_labels["sentiment"].value_counts(sort=True)
+```
+
+### Dictionary Sentiment using NLTK's VADER
+
+NLTK [@bird:2009:nltk] has a sentiment analyzer of its own, VADER
+[@hutto:2014:vader]. It is also built on a dictionary, but each word in it
+has a strength, not just a sign, and rules adjust them: for negation ("not
+good"), for words like "very", for capital letters and for exclamation
+marks. `polarity_scores()` sums them into a `compound` score from -1 to 1:
+
+```{python}
+sia = SentimentIntensityAnalyzer()
+
+sia.polarity_scores("I love this product! It's amazing.")
+```
+
+VADER's authors call a sentence positive when its compound score is at least
+0.05, negative when it is at most -0.05, and neutral in between.
+`score_with_nltk()` labels a list of sentences in the same format as the
+Bing dictionary:
+
+```{python}
+def get_vader_sentiment(text):
+    compound = sia.polarity_scores(text)["compound"]
+    if compound >= 0.05:
+        return "positive"
+    elif compound <= -0.05:
+        return "negative"
+    else:
+        return "neutral"
+
+
+def score_with_nltk(sentences):
+    labels = [get_vader_sentiment(sentence) for sentence in sentences]
+    return pl.DataFrame({"id": range(1, len(labels) + 1), "sentiment": labels})
+
+
+get_vader_sentiment("I love this product! It's amazing.")
+```
+
+Track it in the same way, for the same sentences:
+
+```{python}
+with OfflineEmissionsTracker(project_name="nltk sentiment", **tracker_args) as tracker:
+    nltk_labels = score_with_nltk(pride["sentence"])
+
+nltk_emit = pl.DataFrame([vars(tracker.final_emissions_data)])
+
+pl.concat([dict_emit, nltk_emit], how="diagonal_relaxed").select(
+    "project_name",
+    "duration",
+    energy_wh=pl.col("energy_consumed") * 1000,
+    co2e_mg=pl.col("emissions") * 1e6,
+)
+```
+
+The labels:
+
+```{python}
+nltk_labels["sentiment"].value_counts(sort=True)
+```
+
+Against the Bing dictionary's labels, the confusion matrix shows that the two
+agree on about two sentences in three. VADER finds sentiment in many
+sentences the Bing count leaves neutral, and it more often calls a sentence
+positive:
+
+```{python}
+pl.DataFrame(
+    {"polars": dictionary_labels["sentiment"], "nltk": nltk_labels["sentiment"]}
+).pivot(on="nltk", index="polars", values="nltk", aggregate_function="len", sort_columns=True).sort("polars")
 ```
 
 ### Sentiment with a transformer model
@@ -319,7 +417,7 @@ with OfflineEmissionsTracker(project_name="transformer sentiment", **tracker_arg
 
 transformer_emit = pl.DataFrame([vars(tracker.final_emissions_data)])
 
-pl.concat([dict_emit, transformer_emit], how="diagonal_relaxed").select(
+pl.concat([dict_emit, nltk_emit, transformer_emit], how="diagonal_relaxed").select(
     "project_name",
     "duration",
     energy_wh=pl.col("energy_consumed") * 1000,
@@ -327,8 +425,8 @@ pl.concat([dict_emit, transformer_emit], how="diagonal_relaxed").select(
 )
 ```
 
-The model takes far longer, and uses far more energy, than the dictionary.
-Its labels, against the dictionary's:
+The model takes far longer, and uses far more energy, than either dictionary.
+Its labels, against the Bing dictionary's:
 
 ```{python}
 pl.DataFrame(
@@ -345,47 +443,14 @@ sentences labeled by hand.
 
 ### Benchmark: polars, NLTK or transformers?
 
-NLTK [@bird:2009:nltk] has a sentiment analyzer of its own, VADER
-[@hutto:2014:vader]. It is also built on a dictionary, but each word in it
-has a strength, not just a sign, and rules adjust them: for negation ("not
-good"), for words like "very", for capital letters and for exclamation
-marks. `polarity_scores()` sums them into a `compound` score from -1 to 1:
-
-```{python}
-sia = SentimentIntensityAnalyzer()
-
-sia.polarity_scores("I love this product! It's amazing.")
-```
-
-VADER's authors call a sentence positive when its compound score is at least
-0.05, negative when it is at most -0.05, and neutral in between:
-
-```{python}
-def get_vader_sentiment(text):
-    compound = sia.polarity_scores(text)["compound"]
-    if compound >= 0.05:
-        return "positive"
-    elif compound <= -0.05:
-        return "negative"
-    else:
-        return "neutral"
-
-
-get_vader_sentiment("I love this product! It's amazing.")
-```
-
 To compare the three approaches fairly, all start from the same texts from
 *Pride and Prejudice*, one row per chapter. All then split the chapters into
-sentences and label every sentence.
+sentences with NLTK's sentence tokenizer and label every sentence with the
+functions above; only the way they label each sentence differs:
 
 ```{python}
 def sentiment_polars(texts):
     return score_with_dictionary(unnest_sentences(texts, "text"))
-
-
-def score_with_nltk(sentences):
-    labels = [get_vader_sentiment(sentence) for sentence in sentences]
-    return pl.DataFrame({"id": range(1, len(labels) + 1), "sentiment": labels})
 
 
 def sentiment_nltk(texts):
@@ -396,21 +461,6 @@ def sentiment_nltk(texts):
 def sentiment_transformers(texts):
     sentences = [sentence for text in texts["text"] for sentence in sent_tokenize(text)]
     return score_with_transformers(sentences)
-```
-
-All three split the chapters with NLTK's sentence tokenizer; only the way they
-label each sentence differs. To compare the two dictionaries' labels, score
-the same sentences, `pride`, with VADER. The confusion matrix shows that
-they agree on about two sentences in three. VADER finds sentiment in many
-sentences the Bing count leaves neutral, and it more often calls a sentence
-positive:
-
-```{python}
-nltk_labels = score_with_nltk(pride["sentence"])
-
-pl.DataFrame(
-    {"polars": dictionary_labels["sentiment"], "nltk": nltk_labels["sentiment"]}
-).pivot(on="nltk", index="polars", values="nltk", aggregate_function="len", sort_columns=True).sort("polars")
 ```
 
 CodeCarbon has no benchmark of its own, but tasks make one. `carbon_bench()`
