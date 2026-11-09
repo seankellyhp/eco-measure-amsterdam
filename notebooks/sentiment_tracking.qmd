@@ -1,6 +1,6 @@
 ---
 title: "Tracking the Emissions of Sentiment Analysis"
-subtitle: "Measuring and benchmarking dictionary sentiment analysis with CodeCarbon"
+subtitle: "Measuring and benchmarking dictionary and transformer sentiment analysis with CodeCarbon"
 bibliography: ../references.bib
 csl: ../apa.csl
 format:
@@ -33,10 +33,10 @@ pl.Config.set_tbl_hide_dataframe_shape(True)
 
 ## Description
 
-This notebook continues the Getting Started tutorial. It measures one
-sentiment analysis with a `with OfflineEmissionsTracker()` block, and then
-benchmarks two ways of writing it against each other with CodeCarbon's
-tasks.
+This notebook continues the Getting Started tutorial. It measures two
+sentiment analyses, a dictionary method and a transformer model, each with a
+`with OfflineEmissionsTracker()` block, and then benchmarks three ways of
+labeling sentiment against each other with CodeCarbon's tasks.
 
 It runs on its own: the setup below loads the packages, the data, and the
 helper functions from Getting Started.
@@ -51,8 +51,10 @@ from pathlib import Path
 
 import nltk
 import polars as pl
+import torch
 from codecarbon import OfflineEmissionsTracker
-from plotnine import aes, geom_jitter, geom_violin, ggplot, labs, theme, theme_minimal
+from plotnine import aes, geom_jitter, geom_violin, ggplot, labs, scale_y_log10, theme, theme_minimal
+from transformers import pipeline
 ```
 
 ```{python}
@@ -144,9 +146,10 @@ books = austen_books.with_columns(
 
 ## Comparisons of Simple Sentiment Analysis Approaches
 
-Next we will use two approaches for sentiment analysis, with a focus on
+Next we will use three approaches for sentiment analysis, with a focus on
 comparing their emissions: the same dictionary method, written with polars
-and with NLTK.
+and with NLTK, and a transformer model that has learned sentiment from
+labeled examples.
 
 ### Data Preparation
 
@@ -237,7 +240,74 @@ second. The labels:
 dictionary_labels["sentiment"].value_counts(sort=True)
 ```
 
-### Benchmark: polars or NLTK?
+### Sentiment with a transformer model
+
+Instead of counting words from a list, a transformer model reads each
+sentence as a whole. Hugging Face's transformers package [@wolf:2020:transformers]
+wraps a model, its tokenizer and the steps around them in a `pipeline()`.
+The model here is DistilBERT [@sanh:2019:distilbert], fine-tuned to label
+English sentences as positive or negative. The pipeline downloads it
+(about 270 MB) the first time, and runs on the GPU if there is one:
+
+```{python}
+classifier = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english",
+    device=0 if torch.cuda.is_available() else -1,
+)
+
+classifier(["I love this book.", "I hate this book."])
+```
+
+Each sentence gets a label and the model's confidence in it. The model has
+no neutral label. `score_with_transformers()` labels a list of sentences in
+the same format as the dictionary. Sentences longer than the model's limit
+of 512 tokens are cut short:
+
+```{python}
+def score_with_transformers(sentences):
+    results = classifier(list(sentences), truncation=True)
+    return pl.DataFrame(
+        {
+            "id": range(1, len(results) + 1),
+            "sentiment": [result["label"].lower() for result in results],
+        }
+    )
+```
+
+Track it in the same way, for the same sentences:
+
+```{python}
+with OfflineEmissionsTracker(project_name="transformer sentiment", **tracker_args) as tracker:
+    transformer_labels = score_with_transformers(pride["sentence"])
+
+transformer_emit = pl.DataFrame([vars(tracker.final_emissions_data)])
+
+pl.concat([dict_emit, transformer_emit], how="diagonal_relaxed").select(
+    "project_name",
+    "duration",
+    energy_wh=pl.col("energy_consumed") * 1000,
+    co2e_mg=pl.col("emissions") * 1e6,
+)
+```
+
+The model takes far longer, and uses far more energy, than the dictionary.
+Its labels, against the dictionary's:
+
+```{python}
+pl.DataFrame(
+    {"dictionary": dictionary_labels["sentiment"], "transformers": transformer_labels["sentiment"]}
+).pivot(
+    on="transformers", index="dictionary", values="transformers", aggregate_function="len", sort_columns=True
+).sort("dictionary")
+```
+
+The model calls every sentence positive or negative, including the ones
+the dictionary leaves neutral, and the two disagree on many of the others.
+Neither is the truth: to know which is closer to it, compare both with
+sentences labeled by hand.
+
+### Benchmark: polars, NLTK or transformers?
 
 The same dictionary approach can be written with NLTK [@bird:2009:nltk],
 which includes the same sentiment lexicon (`opinion_lexicon`) and its own
@@ -275,10 +345,15 @@ def score_with_nltk(sentences):
 def sentiment_nltk(texts):
     sentences = [sentence for text in texts["text"] for sentence in sent_tokenize(text)]
     return score_with_nltk(sentences)
+
+
+def sentiment_transformers(texts):
+    sentences = [sentence for text in texts["text"] for sentence in sent_tokenize(text)]
+    return score_with_transformers(sentences)
 ```
 
-Both split the chapters with NLTK's sentence tokenizer; only the way they
-split sentences into words differs. To compare their labels, score the same
+All three split the chapters with NLTK's sentence tokenizer; only the way they
+label each sentence differs. To compare their labels, score the same
 sentences, `pride`, with both. The confusion matrix shows that they
 largely agree:
 
@@ -295,7 +370,7 @@ runs each function repeatedly, in random order, as one task each, after one
 untracked warm-up run of each:
 
 ```{python}
-def carbon_bench(functions, times=20, warmup=True):
+def carbon_bench(functions, times=10, warmup=True):
     if warmup:
         for function in functions.values():
             function()
@@ -332,7 +407,10 @@ def plot_bench(bench, metric="energy_consumed"):
     )
 ```
 
-Compare the two:
+Compare the three, 10 times each. The transformer model takes up most of
+the time: about a minute per run on a fast desktop CPU, and more on a laptop
+or on Colab's CPU, so the benchmark takes ten minutes or more. On Colab, a
+GPU runtime (*Runtime > Change runtime type*) speeds it up:
 
 ```{python}
 random.seed(1234)
@@ -341,8 +419,9 @@ bench = carbon_bench(
     {
         "polars": lambda: sentiment_polars(chapters),
         "nltk": lambda: sentiment_nltk(chapters),
+        "transformers": lambda: sentiment_transformers(chapters),
     },
-    times=20,
+    times=10,
 )
 
 bench.group_by("expr", maintain_order=True).agg(
@@ -355,6 +434,15 @@ bench.group_by("expr", maintain_order=True).agg(
 ```{python}
 #| label: bench-plot
 plot_bench(bench, metric="energy_consumed")
+```
+
+The transformer model uses orders of magnitude more energy than either
+dictionary, so the two dictionaries are squeezed together at the bottom.
+A log scale shows all three:
+
+```{python}
+#| label: bench-plot-log
+plot_bench(bench, metric="energy_consumed") + scale_y_log10()
 ```
 
 ## Technical Details

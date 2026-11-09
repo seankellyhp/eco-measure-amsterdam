@@ -15,4 +15,15 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
+    "torch>=2.15.0",
+    "transformers>=5.22.2",
 ]
+
+# CPU-only PyTorch on Linux and Windows: the CUDA wheels from PyPI are several GB.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

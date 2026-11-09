@@ -58,8 +58,8 @@ the top first, then the cells in order, from top to bottom.
 
 - **Google Colab.** Open the notebook with the *Open in Colab* button above.
   The setup cell installs CodeCarbon, EcoLogits, polars and plotnine
-  (scikit-learn, SciPy, NLTK and pyarrow are already on Colab), and downloads
-  the data.
+  (scikit-learn, SciPy, NLTK, pyarrow, transformers and PyTorch are already
+  on Colab), and downloads the data.
 - **Your own machine.** Clone the
   [repository](https://github.com/seankellyhp/eco-measure-amsterdam). It has
   the data and a [uv](https://docs.astral.sh/uv/) environment with every
@@ -75,7 +75,9 @@ the top first, then the cells in order, from top to bottom.
 polars holds the data and the measurements, and plotnine draws them.
 scikit-learn [@pedregosa:2011:sklearn] fits the topic model, and NLTK
 [@bird:2009:nltk] provides the stop words, the sentence tokenizer and the
-second sentiment dictionary. openai and pydantic send the requests to the language model.
+second sentiment dictionary. transformers [@wolf:2020:transformers] and
+PyTorch run a sentiment model locally, and openai and pydantic send the
+requests to the hosted language model.
 
 On Colab, CodeCarbon measures a shared virtual machine in a Google
 data center. It usually cannot read the CPU's energy counters there, so it
