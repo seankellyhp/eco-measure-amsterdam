@@ -18,3 +18,8 @@ dependencies = [
     "torch>=2.15.0",
     "transformers>=5.22.2",
 ]
+
+[dependency-groups]
+docs = [
+    "quarto-cli>=1.11.9",
+]

@@ -1,4 +1,8 @@
 .venv/
 .env
+.quarto/
 codecarbon_results/
 .ipynb_checkpoints/
+
+/.quarto/
+**/*.quarto_ipynb

@@ -1,0 +1,15 @@
+# Render the notebooks from their Quarto sources: uv run --group docs quarto render
+project:
+  render:
+    - notebooks/*.qmd
+
+format:
+  ipynb-raw_html:
+    wrap: preserve
+
+bibliography: references.bib
+csl: apa.csl
+
+# Build the notebooks without running them; participants run them.
+execute:
+  enabled: false

@@ -61,6 +61,17 @@ OPENROUTER_API_KEY=sk-or-...
 
 | File | |
 |---|---|
-| [notebooks/](notebooks/) | The three notebooks. |
+| [notebooks/](notebooks/) | The three notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`). |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
 | [figures/](figures/) | Images used in the notebooks. |
+
+The notebooks are generated from the Quarto sources. After editing a `.qmd`
+file, rebuild the notebooks with
+
+```bash
+uv run --group docs quarto render
+```
+
+The `docs` group installs Quarto, which participants do not need. The build
+settings, including the bibliography, are in [_quarto.yml](_quarto.yml). The
+notebooks are built without running the code, so they have no saved outputs.
