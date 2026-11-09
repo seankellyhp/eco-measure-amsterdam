@@ -5,4 +5,4 @@ c = get_config()  # noqa: F821
 c.IdentityProvider.token = ""
 
 # Open the tutorial notebook straight away.
-c.LabApp.default_url = "/lab/tree/getting-started.ipynb"
+c.LabApp.default_url = "/lab/tree/notebooks/getting-started.ipynb"

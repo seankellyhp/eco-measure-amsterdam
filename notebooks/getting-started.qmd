@@ -1,8 +1,8 @@
 ---
 title: "Getting Started with CodeCarbon and EcoLogits"
 subtitle: "Measuring the energy and emissions of Python programs"
-bibliography: references.bib
-csl: apa.csl
+bibliography: ../references.bib
+csl: ../apa.csl
 format:
   html:
     toc: true
@@ -108,7 +108,7 @@ uv add jupyter
 uv run jupyter lab
 ```
 
-The data are in the `data` folder next to this tutorial:
+The data are in the `data` folder of the repository, next to this notebook's folder:
 `data/austen_books.csv` has one row per printed line of Jane Austen's six
 novels, and `data/bing.csv` is the Bing sentiment lexicon. Both were exported
 from the R packages janeaustenr and tidytext by `data/make_data.R`, so the
@@ -159,7 +159,7 @@ higher proportion of their electricity from low-carbon sources (nuclear,
 solar). In contrast, Germany and the US generate a higher proportion from
 fossil fuels (coal, gas).
 
-![Figure 1. Carbon intensity of electricity across Europe. Green is low, yellow to brown is higher, and grey has no data. Source: Electricity Maps.](figures/electricity-map.png){width=80% fig-align="center"}
+![Figure 1. Carbon intensity of electricity across Europe. Green is low, yellow to brown is higher, and grey has no data. Source: Electricity Maps.](../figures/electricity-map.png){width=80% fig-align="center"}
 
 ### Basic measurements of a Python program
 
@@ -171,17 +171,14 @@ We will demonstrate a standard text analysis, using examples from the
 We load the libraries and the Austen books.
 
 ```{python}
-import os
-import random
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 import nltk
 import polars as pl
 from codecarbon import OfflineEmissionsTracker
-from plotnine import aes, coord_flip, geom_col, geom_jitter, geom_violin, ggplot, labs, theme, theme_minimal
+from plotnine import aes, coord_flip, geom_col, ggplot, labs
 from scipy.sparse import csr_matrix
 
 # more advanced analyses downstream
@@ -189,7 +186,7 @@ from sklearn.decomposition import LatentDirichletAllocation
 ```
 
 ```{python}
-austen_books = pl.read_csv("data/austen_books.csv").with_columns(
+austen_books = pl.read_csv("../data/austen_books.csv").with_columns(
     pl.col("text").fill_null("")
 )
 ```
@@ -200,14 +197,9 @@ downloads once. Here they go into the project's virtual environment, one of
 the folders NLTK searches:
 
 ```{python}
-nltk.download(
-    ["stopwords", "punkt_tab", "opinion_lexicon"],
-    download_dir=f"{sys.prefix}/nltk_data",
-    quiet=True,
-)
+nltk.download("stopwords", download_dir=f"{sys.prefix}/nltk_data", quiet=True)
 
-from nltk.corpus import opinion_lexicon, stopwords
-from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
 
 stop_words = pl.DataFrame({"word": stopwords.words("english")})
 ```
@@ -222,8 +214,8 @@ log_dir = Path(tempfile.mkdtemp(prefix="codecarbon_results_"))
 tracker_args = dict(output_dir=log_dir, country_iso_code="DEU", log_level="error")
 ```
 
-Splitting text into words, and into sentences, is needed several times below,
-so each gets a function of its own:
+Splitting text into words is needed several times below, so it gets a
+function of its own:
 
 ```{python}
 def unnest_tokens(data, column):
@@ -242,28 +234,6 @@ def unnest_tokens(data, column):
         .drop(column)
         .explode("word")
         .drop_nulls("word")
-    )
-
-
-def unnest_sentences(data, column):
-    """Split text into sentences, one row each, like tidytext's unnest_sentences().
-
-    NLTK's sentence tokenizer finds the sentences, and `id` numbers them
-    from 1 in order.
-    """
-    return (
-        data
-        .with_columns(
-            pl.col(column)
-            .map_elements(sent_tokenize, return_dtype=pl.List(pl.String)).alias("sentence")
-        )
-        .drop(column)
-        .explode("sentence")
-        .with_row_index("id", offset=1)
-        .with_columns(
-            pl.col("id")
-            .cast(pl.Int64)
-        )
     )
 ```
 
@@ -459,350 +429,14 @@ the optimal number of topics (k), these numbers increase. Yet they are hardly
 noticeable compared to ever more complex fine-tuning of transformer models or
 inference with large language models.
 
-### Comparisons of Simple Sentiment Analysis Approaches
+## Next Steps
 
-Next we will use two approaches for sentiment analysis, with a focus on
-comparing their emissions: the same dictionary method, written with polars
-and with NLTK.
+The tutorial continues in two more notebooks, each of which runs on its own:
 
-#### Data Preparation
-
-Sentiment is scored sentence by sentence, for every sentence of
-*Pride and Prejudice*. The data has one row per printed line, so first join
-each chapter's lines back into one string. The titles in front of names are
-written without their full stop, or some "Mr." would still end a sentence:
-
-```{python}
-chapters = (
-    books.filter(
-        pl.col("book") == "Pride & Prejudice",
-        pl.col("chapter") > 0,
-        ~pl.col("text").str.contains(r"(?i)^chapter [\divxlc]"),
-    )
-    .group_by("chapter", maintain_order=True)
-    .agg(text=pl.col("text").str.join(" "))
-    .with_columns(
-        pl.col("text")
-        .str.replace_all(r"\s+", " ")
-        .str.strip_chars()
-        .str.replace_all(r"\b(Mr|Mrs|Dr)\.", "$1")
-    )
-)
-```
-
-Then split the chapters into sentences, one row each:
-
-```{python}
-pride = unnest_sentences(chapters, "text")
-
-pride
-```
-
-#### Dictionary Sentiment using polars
-
-The first approach is to split sentences into words, join the Bing lexicon
-[@hu:2004:mining], and count positive against negative words. A sentence
-with no lexicon word, or as many positive as negative ones, is neutral:
-
-```{python}
-bing = pl.read_csv("data/bing.csv")
-
-
-def score_with_dictionary(data):
-    scores = (
-        unnest_tokens(data.select("id", "sentence"), "sentence")
-        .join(bing, on="word")
-        .group_by("id")
-        .agg(score=pl.when(pl.col("sentiment") == "positive").then(1).otherwise(-1).sum())
-    )
-    return (
-        data.select("id")
-        .join(scores, on="id", how="left")
-        .select(
-            "id",
-            sentiment=pl.when(pl.col("score") > 0)
-            .then(pl.lit("positive"))
-            .when(pl.col("score") < 0)
-            .then(pl.lit("negative"))
-            .otherwise(pl.lit("neutral")),
-        )
-    )
-```
-
-Put the call inside a `with OfflineEmissionsTracker()` block. The block can
-hold any number of statements, and what they create is still there
-afterwards. Here it scores every sentence in the novel:
-
-```{python}
-with OfflineEmissionsTracker(project_name="dictionary sentiment", **tracker_args) as tracker:
-    dictionary_labels = score_with_dictionary(pride)
-
-dict_emit = pl.DataFrame([vars(tracker.final_emissions_data)])
-
-dict_emit.select(
-    "project_name",
-    "duration",
-    energy_wh=pl.col("energy_consumed") * 1000,
-    co2e_mg=pl.col("emissions") * 1e6,
-)
-```
-
-Labeling all `{python} f"{pride.height:,}"` sentences takes a fraction of a
-second. The labels:
-
-```{python}
-dictionary_labels["sentiment"].value_counts(sort=True)
-```
-
-#### Benchmark: polars or NLTK?
-
-The same dictionary approach can be written with NLTK [@bird:2009:nltk],
-which includes the same sentiment lexicon (`opinion_lexicon`) and its own
-sentence and word tokenizers, downloaded above:
-
-```{python}
-positive_words = set(opinion_lexicon.positive())
-negative_words = set(opinion_lexicon.negative())
-```
-
-To compare the two packages fairly, both start from the same texts from
-*Pride and Prejudice*, one row per chapter. Both then split the chapters into
-sentences, tokenize them and score every sentence.
-
-```{python}
-def sentiment_polars(texts):
-    return score_with_dictionary(unnest_sentences(texts, "text"))
-
-
-def score_with_nltk(sentences):
-    scores = [
-        sum((word in positive_words) - (word in negative_words) for word in word_tokenize(sentence.lower()))
-        for sentence in sentences
-    ]
-    return pl.DataFrame({"id": range(1, len(scores) + 1), "score": scores}).select(
-        "id",
-        sentiment=pl.when(pl.col("score") > 0)
-        .then(pl.lit("positive"))
-        .when(pl.col("score") < 0)
-        .then(pl.lit("negative"))
-        .otherwise(pl.lit("neutral")),
-    )
-
-
-def sentiment_nltk(texts):
-    sentences = [sentence for text in texts["text"] for sentence in sent_tokenize(text)]
-    return score_with_nltk(sentences)
-```
-
-Both split the chapters with NLTK's sentence tokenizer; only the way they
-split sentences into words differs. To compare their labels, score the same
-sentences, `pride`, with both. The confusion matrix shows that they
-largely agree:
-
-```{python}
-nltk_labels = score_with_nltk(pride["sentence"])
-
-pl.DataFrame(
-    {"polars": dictionary_labels["sentiment"], "nltk": nltk_labels["sentiment"]}
-).pivot(on="nltk", index="polars", values="nltk", aggregate_function="len", sort_columns=True).sort("polars")
-```
-
-CodeCarbon has no benchmark of its own, but tasks make one. `carbon_bench()`
-runs each function repeatedly, in random order, as one task each, after one
-untracked warm-up run of each:
-
-```{python}
-def carbon_bench(functions, times=20, warmup=True):
-    if warmup:
-        for function in functions.values():
-            function()
-
-    runs = [(name, i) for name in functions for i in range(1, times + 1)]
-    random.shuffle(runs)
-
-    tracker = OfflineEmissionsTracker(project_name="carbon bench", **tracker_args)
-    rows = []
-    try:
-        for name, i in runs:
-            tracker.start_task(f"{name}_{i}")
-            functions[name]()
-            task = tracker.stop_task()
-            rows.append({"expr": name, "iter": i, **vars(task)})
-    finally:
-        tracker.stop()
-
-    return pl.DataFrame(rows)
-```
-
-`plot_bench()` draws the runs of each function, one point per run over the
-shape of their distribution:
-
-```{python}
-def plot_bench(bench, metric="energy_consumed"):
-    return (
-        ggplot(bench, aes("expr", metric, fill="expr"))
-        + geom_violin(alpha=0.4)
-        + geom_jitter(width=0.1, height=0, alpha=0.7)
-        + labs(x="", y=metric, title=f"carbon_bench: {metric}")
-        + theme_minimal()
-        + theme(legend_position="none")
-    )
-```
-
-Compare the two:
-
-```{python}
-random.seed(1234)
-
-bench = carbon_bench(
-    {
-        "polars": lambda: sentiment_polars(chapters),
-        "nltk": lambda: sentiment_nltk(chapters),
-    },
-    times=20,
-)
-
-bench.group_by("expr", maintain_order=True).agg(
-    duration_sec=pl.col("duration").median(),
-    energy_wh=pl.col("energy_consumed").median() * 1000,
-    co2e_mg=pl.col("emissions").median() * 1e6,
-)
-```
-
-```{python}
-#| label: bench-plot
-plot_bench(bench, metric="energy_consumed")
-```
-
-#### Tracking the Emissions of More Computationally Complex Methods
-
-This tutorial is self-contained, in that it has avoided loading any large
-models, model weights, or calls to external APIs. However, the results
-demonstrated aren't representative of the current state-of-the-art in
-sentiment analysis. As model complexity increases, so too does the compute
-time, memory, and energy needs.
-
-In the code below I have included an example of estimating the emissions of
-external API calls to Large Language Models for sentiment analysis. When I ran
-this on the sample, the it cost XXX and the estimated energy use was XXX to
-XXX. That is X times more than the Dictionary approach. Of course, LLMs have much more context, so their results
-are often an improvement over either of these simpler approaches. We explored
-the tradeoff between Performance and Energy Use across several classification
-tasks including sentiment analysis, multi-class classification, and named
-entitity recognition [@hamiltonpalicki:2026:dlu]. We found that even small
-reasoning LLMs used up to 150,000 times more energy than Dictionaries for
-sentiment analysis, while also doubling the performance.
-
-We encourage researchers to provides these kinds of benchmarks across a wider
-variety of tasks relevant to social scientists. The numbers provided in this
-tutorial are purposefully small so as to provide an introduction to tracking
-emissions using CodeCarbon and EcoLogits, while also not contributing
-unnecessarily to global greenhouse emissions itself.
-
-#### Sentiment Analysis with Large Language Models
-
-The language model runs in a provider's data center, reached through
-[OpenRouter](https://openrouter.ai) with the
-[openai](https://github.com/openai/openai-python) client. It needs an API
-key. Put the key in a `.env` file, with no spaces around the `=`, and keep
-that file out of version control:
-
-```
-OPENROUTER_API_KEY=sk-or-...
-```
-
-The work happens in the provider's data center, where CodeCarbon cannot see
-it. EcoLogits **estimates** it instead, from the model and the number of
-tokens it generated. It needs three things about a request: the model, the
-number of tokens it generated, and how long it took. Time the request
-yourself; the other two are in the response. `provider` and `model_name` name
-the model as EcoLogits knows it, which is by its maker and without
-OpenRouter's `openai/` prefix.
-
-The code below is not run when the tutorial is rendered, because it needs an
-API key and every request costs money. Check the price of the model on
-OpenRouter before you run it.
-
-Each impact comes as a lower and an upper bound: the provider does not
-publish the size of its models, so EcoLogits brackets it. EcoLogits also
-estimates water, both what cools the data center and what generating its
-electricity consumes. Check `modelled` first: if it is false,
-EcoLogits does not know the model, often because it is newer than the
-installed release, and the impacts are missing.
-
-Unlike CodeCarbon, EcoLogits writes no log file. Save the numbers yourself if
-you want to keep them.
-
-```{python}
-#| eval: false
-from typing import Literal
-
-from dotenv import load_dotenv
-from ecologits.tracers.utils import llm_impacts
-from openai import OpenAI
-from pydantic import BaseModel, Field
-
-load_dotenv()
-
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.environ["OPENROUTER_API_KEY"],
-)
-
-
-# Number the sentences, so all of them go in a single prompt.
-class Label(BaseModel):
-    id: int = Field(description="Number of the sentence")
-    sentiment: Literal["positive", "neutral", "negative"]
-
-
-class Labels(BaseModel):
-    labels: list[Label]
-
-
-def classify(sentences):
-    prompt = "\n".join(f"{id}. {sentence}" for id, sentence in sentences.select("id", "sentence").iter_rows())
-    return client.chat.completions.parse(
-        model="openai/gpt-6-luna",
-        messages=[
-            {"role": "system", "content": "You classify the sentiment of sentences from a novel."},
-            {"role": "user", "content": prompt},
-        ],
-        response_format=Labels,
-    )
-
-
-# A random sample of 200 sentences keeps the request short and cheap.
-pride_sample = pride.sample(n=200, seed=1234)
-
-start = time.perf_counter()
-response = classify(pride_sample)
-latency = time.perf_counter() - start
-
-impacts = llm_impacts(
-    provider="openai",
-    model_name="gpt-6-luna",
-    output_token_count=response.usage.completion_tokens,
-    request_latency=latency,
-)
-
-llm_labels = pl.DataFrame([label.model_dump() for label in response.choices[0].message.parsed.labels])
-
-pl.DataFrame(
-    {
-        "label": ["LLM sentiment"],
-        "duration": [latency],
-        "modelled": [impacts.errors is None],
-        "output_tokens": [response.usage.completion_tokens],
-        "energy_wh_min": [impacts.energy.value.min * 1000],
-        "energy_wh_max": [impacts.energy.value.max * 1000],
-        "co2e_mg_min": [impacts.gwp.value.min * 1e6],
-        "co2e_mg_max": [impacts.gwp.value.max * 1e6],
-        "water_ml_min": [impacts.wcf.value.min * 1000],
-        "water_ml_max": [impacts.wcf.value.max * 1000],
-    }
-)
-```
+- `sentiment_tracking`: measure and benchmark dictionary sentiment analysis,
+  written with polars and with NLTK.
+- `llm_tracking`: estimate the energy and emissions of sentiment analysis
+  with a hosted large language model, using EcoLogits.
 
 ## Technical Details
 

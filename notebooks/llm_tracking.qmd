@@ -1,0 +1,276 @@
+---
+title: "Tracking the Emissions of Large Language Models"
+subtitle: "Estimating the energy and emissions of LLM sentiment analysis with EcoLogits"
+bibliography: ../references.bib
+csl: ../apa.csl
+format:
+  html:
+    toc: true
+    toc-location: left
+    embed-resources: true
+    code-overflow: wrap
+jupyter: python3
+execute:
+  warning: false
+---
+
+```{python}
+#| include: false
+import os
+import warnings
+
+# Quieten CodeCarbon before the first tracker is created.
+os.environ["CODECARBON_LOG_LEVEL"] = "error"
+warnings.filterwarnings("ignore")
+
+import plotnine
+import polars as pl
+
+plotnine.options.figure_size = (7, 3.5)
+plotnine.options.dpi = 110
+pl.Config.set_tbl_hide_dataframe_shape(True)
+```
+
+## Tracking the Emissions of More Computationally Complex Methods
+
+This notebook continues the Getting Started and sentiment notebooks. Those
+were self-contained, in that they avoided loading any large models, model
+weights, or calls to external APIs. However, the results
+demonstrated aren't representative of the current state-of-the-art in
+sentiment analysis. As model complexity increases, so too does the compute
+time, memory, and energy needs.
+
+In the code below I have included an example of estimating the emissions of
+external API calls to Large Language Models for sentiment analysis. When I ran
+this on the sample, the it cost XXX and the estimated energy use was XXX to
+XXX. That is X times more than the Dictionary approach. Of course, LLMs have much more context, so their results
+are often an improvement over either of these simpler approaches. We explored
+the tradeoff between Performance and Energy Use across several classification
+tasks including sentiment analysis, multi-class classification, and named
+entitity recognition [@hamiltonpalicki:2026:dlu]. We found that even small
+reasoning LLMs used up to 150,000 times more energy than Dictionaries for
+sentiment analysis, while also doubling the performance.
+
+We encourage researchers to provides these kinds of benchmarks across a wider
+variety of tasks relevant to social scientists. The numbers provided in this
+tutorial are purposefully small so as to provide an introduction to tracking
+emissions using CodeCarbon and EcoLogits, while also not contributing
+unnecessarily to global greenhouse emissions itself.
+
+## Setup
+
+This notebook runs on its own. It labels the same sentences of *Pride and
+Prejudice* as the sentiment notebook, so it repeats the preparation of the
+data.
+
+```{python}
+import os
+import sys
+import time
+
+import nltk
+import polars as pl
+
+nltk.download("punkt_tab", download_dir=f"{sys.prefix}/nltk_data", quiet=True)
+
+from nltk.tokenize import sent_tokenize
+```
+
+```{python}
+austen_books = pl.read_csv("../data/austen_books.csv").with_columns(
+    pl.col("text").fill_null("")
+)
+```
+
+The model labels sentences, so the text needs splitting into sentences, one
+row each. `unnest_sentences()` is the same as in the sentiment notebook:
+
+```{python}
+def unnest_sentences(data, column):
+    """Split text into sentences, one row each, like tidytext's unnest_sentences().
+
+    NLTK's sentence tokenizer finds the sentences, and `id` numbers them
+    from 1 in order.
+    """
+    return (
+        data
+        .with_columns(
+            pl.col(column)
+            .map_elements(sent_tokenize, return_dtype=pl.List(pl.String)).alias("sentence")
+        )
+        .drop(column)
+        .explode("sentence")
+        .with_row_index("id", offset=1)
+        .with_columns(
+            pl.col("id")
+            .cast(pl.Int64)
+        )
+    )
+```
+
+Number the chapters of each novel. A new chapter starts at each line that
+begins with "Chapter":
+
+```{python}
+books = austen_books.with_columns(
+    linenumber=pl.int_range(1, pl.len() + 1).over("book"),
+    chapter=pl.col("text").str.contains(r"(?i)^chapter [\divxlc]").cum_sum().over("book"),
+)
+```
+
+### Data Preparation
+
+Sentiment is scored sentence by sentence, for every sentence of
+*Pride and Prejudice*. The data has one row per printed line, so first join
+each chapter's lines back into one string. The titles in front of names are
+written without their full stop, or some "Mr." would still end a sentence:
+
+```{python}
+chapters = (
+    books.filter(
+        pl.col("book") == "Pride & Prejudice",
+        pl.col("chapter") > 0,
+        ~pl.col("text").str.contains(r"(?i)^chapter [\divxlc]"),
+    )
+    .group_by("chapter", maintain_order=True)
+    .agg(text=pl.col("text").str.join(" "))
+    .with_columns(
+        pl.col("text")
+        .str.replace_all(r"\s+", " ")
+        .str.strip_chars()
+        .str.replace_all(r"\b(Mr|Mrs|Dr)\.", "$1")
+    )
+)
+```
+
+Then split the chapters into sentences, one row each:
+
+```{python}
+pride = unnest_sentences(chapters, "text")
+
+pride
+```
+
+## Sentiment Analysis with Large Language Models
+
+The language model runs in a provider's data center, reached through
+[OpenRouter](https://openrouter.ai) with the
+[openai](https://github.com/openai/openai-python) client. It needs an API
+key. Put the key in a `.env` file, with no spaces around the `=`, and keep
+that file out of version control:
+
+```
+OPENROUTER_API_KEY=sk-or-...
+```
+
+The work happens in the provider's data center, where CodeCarbon cannot see
+it. EcoLogits **estimates** it instead, from the model and the number of
+tokens it generated. It needs three things about a request: the model, the
+number of tokens it generated, and how long it took. Time the request
+yourself; the other two are in the response. `provider` and `model_name` name
+the model as EcoLogits knows it, which is by its maker and without
+OpenRouter's `openai/` prefix.
+
+The code below is not run when the tutorial is rendered, because it needs an
+API key and every request costs money. Check the price of the model on
+OpenRouter before you run it.
+
+Each impact comes as a lower and an upper bound: the provider does not
+publish the size of its models, so EcoLogits brackets it. EcoLogits also
+estimates water, both what cools the data center and what generating its
+electricity consumes. Check `modelled` first: if it is false,
+EcoLogits does not know the model, often because it is newer than the
+installed release, and the impacts are missing.
+
+Unlike CodeCarbon, EcoLogits writes no log file. Save the numbers yourself if
+you want to keep them.
+
+```{python}
+#| eval: false
+from typing import Literal
+
+from dotenv import load_dotenv
+from ecologits.tracers.utils import llm_impacts
+from openai import OpenAI
+from pydantic import BaseModel, Field
+
+load_dotenv()
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.environ["OPENROUTER_API_KEY"],
+)
+
+
+# Number the sentences, so all of them go in a single prompt.
+class Label(BaseModel):
+    id: int = Field(description="Number of the sentence")
+    sentiment: Literal["positive", "neutral", "negative"]
+
+
+class Labels(BaseModel):
+    labels: list[Label]
+
+
+def classify(sentences):
+    prompt = "\n".join(f"{id}. {sentence}" for id, sentence in sentences.select("id", "sentence").iter_rows())
+    return client.chat.completions.parse(
+        model="openai/gpt-6-luna",
+        messages=[
+            {"role": "system", "content": "You classify the sentiment of sentences from a novel."},
+            {"role": "user", "content": prompt},
+        ],
+        response_format=Labels,
+    )
+
+
+# A random sample of 200 sentences keeps the request short and cheap.
+pride_sample = pride.sample(n=200, seed=1234)
+
+start = time.perf_counter()
+response = classify(pride_sample)
+latency = time.perf_counter() - start
+
+impacts = llm_impacts(
+    provider="openai",
+    model_name="gpt-6-luna",
+    output_token_count=response.usage.completion_tokens,
+    request_latency=latency,
+)
+
+llm_labels = pl.DataFrame([label.model_dump() for label in response.choices[0].message.parsed.labels])
+
+pl.DataFrame(
+    {
+        "label": ["LLM sentiment"],
+        "duration": [latency],
+        "modelled": [impacts.errors is None],
+        "output_tokens": [response.usage.completion_tokens],
+        "energy_wh_min": [impacts.energy.value.min * 1000],
+        "energy_wh_max": [impacts.energy.value.max * 1000],
+        "co2e_mg_min": [impacts.gwp.value.min * 1e6],
+        "co2e_mg_max": [impacts.gwp.value.max * 1e6],
+        "water_ml_min": [impacts.wcf.value.min * 1000],
+        "water_ml_max": [impacts.wcf.value.max * 1000],
+    }
+)
+```
+
+## Technical Details
+
+See the [CodeCarbon documentation](https://mlco2.github.io/codecarbon/) and
+the [EcoLogits documentation](https://ecologits.ai) for their methods, and
+the [TidyCarbon repository](https://github.com/seankellyhp/Tidycarbon) for
+the R version of this tutorial.
+
+## References
+
+::: {#refs}
+:::
+
+## Disclaimer
+
+This method is intended for academic research; ensure legality and ethics
+when processing chat data.
+
+## Contact Details
