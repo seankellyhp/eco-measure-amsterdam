@@ -1,0 +1,18 @@
+[project]
+name = "eco-measure-amsterdam"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "codecarbon>=3.3.2",
+    "ecologits[openai]>=0.11.3",
+    "jupyter>=1.1.1",
+    "nltk>=3.10.4",
+    "openai>=2.54.0",
+    "plotnine>=0.15.9",
+    "polars>=2.1.0",
+    "pyarrow>=26.0.1",
+    "pydantic>=2.14.3",
+    "python-dotenv>=1.2.4",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+]
