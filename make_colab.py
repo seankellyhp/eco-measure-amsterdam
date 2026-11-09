@@ -73,7 +73,7 @@ the top first, then the cells in order, from top to bottom.
   git clone https://github.com/seankellyhp/eco-measure-amsterdam
   cd eco-measure-amsterdam
   uv sync
-  uv run jupyter lab getting-started.ipynb
+  uv run jupyter lab --config jupyter_server_config.py
   ```
 
 polars holds the data and the measurements, and plotnine draws them.

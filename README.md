@@ -30,11 +30,14 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 git clone https://github.com/seankellyhp/eco-measure-amsterdam
 cd eco-measure-amsterdam
 uv sync
-uv run jupyter lab getting-started.ipynb
+uv run jupyter lab --config jupyter_server_config.py
 ```
 
 `uv sync` installs Python and every package, at the versions in
-[uv.lock](uv.lock). The data are in [data/](data/). NLTK downloads its
+[uv.lock](uv.lock). The last command opens the notebook in your browser, with no token
+or password ([jupyter_server_config.py](jupyter_server_config.py)). If no browser
+opens, go to <http://localhost:8888>. Leave the terminal open while you work;
+Ctrl+C stops Jupyter. The data are in [data/](data/). NLTK downloads its
 tokenizer models and lexicon into the virtual environment on the first run.
 
 ## The language model section
