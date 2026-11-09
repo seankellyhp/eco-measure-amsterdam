@@ -1,6 +1,6 @@
 # Measuring the energy and emissions of Python programs
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting-started.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting_started.ipynb)
 
 Workshop materials: a tutorial on measuring the energy use and carbon
 emissions of Python programs with [CodeCarbon](https://codecarbon.io) and
@@ -12,7 +12,7 @@ are meant to be read in this order:
 
 | Notebook | | |
 |---|---|---|
-| [getting-started.ipynb](notebooks/getting-started.ipynb) | Measure the energy and emissions of an existing Python script, and of each step of a pipeline (an LDA topic model). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting-started.ipynb) |
+| [getting_started.ipynb](notebooks/getting_started.ipynb) | Measure the energy and emissions of an existing Python script, and of each step of a pipeline (an LDA topic model). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting_started.ipynb) |
 | [sentiment_tracking.ipynb](notebooks/sentiment_tracking.ipynb) | Measure dictionary and transformer (DistilBERT) sentiment analysis, and benchmark the Bing dictionary in polars, NLTK's VADER and transformers against each other. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/sentiment_tracking.ipynb) |
 | [llm_tracking.ipynb](notebooks/llm_tracking.ipynb) | Estimate the energy and emissions of sentiment analysis with a hosted language model, with EcoLogits. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/llm_tracking.ipynb) |
 
@@ -30,7 +30,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 git clone https://github.com/seankellyhp/eco-measure-amsterdam
 cd eco-measure-amsterdam
 uv sync --extra cpu
-uv run jupyter lab notebooks/getting-started.ipynb
+uv run jupyter lab notebooks/getting_started.ipynb
 ```
 
 `uv sync --extra cpu` installs Python and every package, at the versions in

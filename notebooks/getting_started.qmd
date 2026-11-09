@@ -14,7 +14,7 @@ execute:
   warning: false
 ---
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting-started.ipynb)&nbsp;
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting_started.ipynb)&nbsp;
 
 ```{python}
 # Setup. On Colab: install the packages Colab does not have, and download the data.
@@ -117,7 +117,7 @@ the top first, then the cells in order, from top to bottom.
   git clone https://github.com/seankellyhp/eco-measure-amsterdam
   cd eco-measure-amsterdam
   uv sync
-  uv run jupyter lab notebooks/getting-started.ipynb
+  uv run jupyter lab notebooks/getting_started.ipynb
   ```
 
 polars holds the data and the measurements, and plotnine draws them.
@@ -201,7 +201,7 @@ from pathlib import Path
 import nltk
 import polars as pl
 from codecarbon import OfflineEmissionsTracker
-from plotnine import aes, coord_flip, geom_col, geom_point, ggplot, labs
+from plotnine import aes, coord_flip, geom_col, ggplot, labs
 from scipy.sparse import csr_matrix
 
 # more advanced analyses downstream
@@ -490,43 +490,37 @@ def unnest_tokens_fast(data, column):
 ```
 
 Which is faster, and by how much? Guessing is easy; measuring is better. Run
-each tokenizer on the chapters three times, in turn, each run as a task of its
-own:
+each tokenizer once on the same chapters, each as a task of one tracker, as
+in the pipeline above:
 
 ```{python}
-tokenizers = {"nltk": unnest_tokens, "polars": unnest_tokens_fast}
-times = 3
+tracker = OfflineEmissionsTracker(project_name="tokenizer comparison", **tracker_args)
 
-tracker = OfflineEmissionsTracker(project_name="tokenizer benchmark", **tracker_args)
-
-rows = []
 try:
-    for i in range(1, times + 1):
-        for name, tokenize in tokenizers.items():
-            tracker.start_task(f"{name}_{i}")
-            tokenize(chapters, "text")
-            task = tracker.stop_task()
-            rows.append({"tokenizer": name, "iter": i, **vars(task)})
+    tracker.start_task("nltk")
+    unnest_tokens(chapters, "text")
+    tracker.stop_task()
+
+    tracker.start_task("polars")
+    unnest_tokens_fast(chapters, "text")
+    tracker.stop_task()
 finally:
     tracker.stop()
 
-tokenizer_bench = pl.DataFrame(rows).with_columns(
-    energy_wh=pl.col("energy_consumed") * 1000
-)
+tokenizer_steps = pl.DataFrame(
+    [{"tokenizer": label, **vars(task.emissions_data)} for label, task in tracker._tasks.items()]
+).with_columns(energy_wh=pl.col("energy_consumed") * 1000)
 
-tokenizer_bench.group_by("tokenizer", maintain_order=True).agg(
-    duration_sec=pl.col("duration").median(),
-    energy_wh=pl.col("energy_wh").median(),
-)
+tokenizer_steps.select("tokenizer", "duration", "energy_wh")
 ```
 
-Each point is one run:
+Side by side:
 
 ```{python}
 #| label: tokenizer-plot
-ggplot(tokenizer_bench, aes("tokenizer", "energy_wh")) + geom_point(
-    size=3, alpha=0.7
-) + labs(x="", y="Energy (Wh)")
+ggplot(tokenizer_steps, aes("tokenizer", "energy_wh")) + geom_col() + labs(
+    x="", y="Energy (Wh)"
+)
 ```
 
 The regular expression is about two orders of magnitude faster than NLTK,
@@ -534,9 +528,11 @@ and uses as much less energy. The two do not split text identically, though:
 NLTK keeps "mr." with its full stop and hyphenated words such as
 "drawing-room" whole, which the regular expression splits apart. Whether
 that difference is worth the energy is a choice for the analysis at hand;
-a benchmark turns the choice from a guess into a measurement. It is also
-cheap: a few runs of each candidate, before a pipeline is run on a large
-corpus, can save far more energy than they use.
+a measurement turns the choice from a guess into a fact. It is also
+cheap: one run of each candidate, before a pipeline is run on a large
+corpus, can save far more energy than it uses. A single run can be noisy,
+though; for a closer comparison, repeat each run a few times, as the
+benchmark in `sentiment_tracking` does.
 
 ## Next Steps
 
