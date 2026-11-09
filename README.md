@@ -29,15 +29,33 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 ```bash
 git clone https://github.com/seankellyhp/eco-measure-amsterdam
 cd eco-measure-amsterdam
-uv sync
+uv sync --extra cpu
 uv run jupyter lab notebooks/getting-started.ipynb
 ```
 
-`uv sync` installs Python and every package, at the versions in
-[uv.lock](uv.lock). It installs the CPU-only build of PyTorch, which the
-transformer model in `sentiment_tracking` uses, so it works on every machine
-and the download stays small. To run the model on an NVIDIA GPU, use Colab
-with a GPU runtime.
+`uv sync --extra cpu` installs Python and every package, at the versions in
+[uv.lock](uv.lock), with the CPU-only build of PyTorch, which the
+transformer model in `sentiment_tracking` uses. It works on every machine,
+and the download stays small. Don't leave out `--extra cpu`: a plain
+`uv sync` removes PyTorch.
+
+**NVIDIA GPU (Linux or Windows).** To run the model on an NVIDIA GPU, install
+the CUDA build of PyTorch instead (about 3 GB more to download):
+
+```bash
+uv sync --extra cu132
+```
+
+It needs an NVIDIA driver for CUDA 13: run `nvidia-smi` and check that the
+top right shows `CUDA Version: 13.0` or higher. If it shows a lower version,
+update the driver, or use `--extra cpu`. GPUs older than the GTX 16 and
+RTX 20 series are not supported by CUDA 13; use Colab with a GPU runtime
+instead. If the GPU cannot be used, the notebook says
+`The model runs on: cpu` and carries on, on the CPU. To switch back, run
+`uv sync --extra cpu`.
+
+**Mac.** Use `--extra cpu`. On an Apple Silicon Mac the model runs on the
+Mac's GPU. PyTorch no longer supports Intel Macs; use Colab instead.
 
 The last command opens Getting Started in your browser; if
 no browser opens, copy the `http://localhost:8888/...` link that Jupyter prints in
@@ -46,8 +64,9 @@ the file browser on the left. Leave the terminal open while you work;
 Ctrl+C stops Jupyter. The data are in [data/](data/). NLTK downloads its
 tokenizer models and lexicon into the virtual environment on the first run,
 and transformers downloads its sentiment model (about 270 MB) into the
-Hugging Face cache. The sentiment model runs on the GPU of an Apple Silicon
-Mac, and on the CPU otherwise.
+Hugging Face cache. The sentiment model runs on an NVIDIA GPU if you
+installed the CUDA build, on the GPU of an Apple Silicon Mac, and on the CPU
+otherwise.
 
 ## The language model section
 

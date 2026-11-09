@@ -15,7 +15,6 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "scikit-learn>=1.9.1",
     "scipy>=1.18.1",
-    "torch>=2.15.0",
     "transformers>=5.22.2",
 ]
 
@@ -24,15 +23,31 @@ docs = [
     "quarto-cli>=1.11.9",
 ]
 
+[project.optional-dependencies]
+# PyTorch comes in two builds; install exactly one:
+#   uv sync --extra cpu     CPU only (and Apple Silicon GPUs on macOS)
+#   uv sync --extra cu132   NVIDIA GPU, CUDA 13.2 (Linux and Windows)
+cpu = ["torch>=2.15.0"]
+cu132 = ["torch>=2.15.0"]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu132" }]]
+
 [tool.uv.sources]
-# The CPU-only build of PyTorch, a much smaller download than the CUDA build
-# PyPI has for Linux. macOS uses PyPI, whose build is CPU-only and also
-# supports the GPU of Apple Silicon Macs.
+# On Linux and Windows each extra takes torch from its own PyTorch index.
+# macOS uses PyPI for both: its build is CPU-only and also supports the GPU
+# of Apple Silicon Macs.
 torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu132", extra = "cu132", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
