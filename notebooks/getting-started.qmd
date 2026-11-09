@@ -6,6 +6,10 @@ jupyter:
     name: python3
     display_name: Python 3
     language: python
+  # nbformat 4.4 has no cell ids, so the notebooks render the same every time
+  # (with 4.5, pandoc gives every cell a random id on each render).
+  nbformat: 4
+  nbformat_minor: 4
 execute:
   warning: false
 ---
