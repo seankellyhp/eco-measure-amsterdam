@@ -23,3 +23,16 @@ dependencies = [
 docs = [
     "quarto-cli>=1.11.9",
 ]
+
+[tool.uv.sources]
+# The CPU-only build of PyTorch, a much smaller download than the CUDA build
+# PyPI has for Linux. macOS uses PyPI, whose build is CPU-only and also
+# supports the GPU of Apple Silicon Macs.
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

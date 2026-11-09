@@ -34,16 +34,20 @@ uv run jupyter lab notebooks/getting-started.ipynb
 ```
 
 `uv sync` installs Python and every package, at the versions in
-[uv.lock](uv.lock). The last command opens Getting Started in your browser; if
+[uv.lock](uv.lock). It installs the CPU-only build of PyTorch, which the
+transformer model in `sentiment_tracking` uses, so it works on every machine
+and the download stays small. To run the model on an NVIDIA GPU, use Colab
+with a GPU runtime.
+
+The last command opens Getting Started in your browser; if
 no browser opens, copy the `http://localhost:8888/...` link that Jupyter prints in
 the terminal. The other two notebooks are next to it in the `notebooks` folder, in
 the file browser on the left. Leave the terminal open while you work;
 Ctrl+C stops Jupyter. The data are in [data/](data/). NLTK downloads its
 tokenizer models and lexicon into the virtual environment on the first run,
 and transformers downloads its sentiment model (about 270 MB) into the
-Hugging Face cache. The sentiment model runs on an NVIDIA GPU if there is
-one (on Linux and Windows, PyTorch's CUDA libraries are a download of several
-GB), and on the CPU otherwise.
+Hugging Face cache. The sentiment model runs on the GPU of an Apple Silicon
+Mac, and on the CPU otherwise.
 
 ## The language model section
 
