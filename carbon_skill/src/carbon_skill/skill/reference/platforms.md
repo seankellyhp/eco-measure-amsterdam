@@ -25,7 +25,7 @@ country is the VPN's. The monitor itself runs offline.
 ## Lifecycle
 
 `carbon start` launches a detached monitor process that owns one codecarbon
-tracker and writes a cumulative row to `emissions.csv` every interval. The run
+tracker and saves a cumulative sample to the database every interval. The run
 is bound to the agent process that started it (pid and creation time, so a
 recycled pid is not mistaken for it). It stops when:
 
@@ -38,21 +38,42 @@ If the monitor itself was killed, the next `carbon` command marks the run
 Runs bound to a live agent are never touched. A report prints
 `(stopped by: ...)` for any run not ended by `carbon end`.
 
-## Run folder
+## Data model
 
-Runs live under `CARBON_RUN_ROOT`, else the user data folder
-(`~/.local/share/carbon-skill/runs` on Linux,
+Everything is in one SQLite database, `carbon.db`, in the data folder:
+`CARBON_RUN_ROOT`, else `~/.local/share/carbon-skill/runs` on Linux,
 `~/Library/Application Support/carbon-skill/runs` on macOS,
-`%LOCALAPPDATA%\carbon-skill\carbon-skill\runs` on Windows), one folder per label.
-Uninstalling the skill does not delete them.
+`%LOCALAPPDATA%\carbon-skill\carbon-skill\runs` on Windows. Uninstalling the
+skill does not delete it. Do not point `CARBON_RUN_ROOT` at a synced or network
+folder (OneDrive, Dropbox, NFS): SQLite's write-ahead log is not safe there.
 
-| file | content |
-|---|---|
-| `run.json` | label, interval, grid, agent (pid, name, how detected), cwd, version |
-| `session.json` | the transcript used for tokens; absent if not identified |
-| `status.json` | state, monitor pid, started/ended, stopped_by, CPU and GPU method, last flush |
-| `emissions.csv` | codecarbon's output; one cumulative row per flush |
-| `monitor.log` | codecarbon's log; check it if `carbon start` fails |
+```
+session 1 ---- n run 1 ---- n sample             CodeCarbon, measured
+                     1 ---- n api_call 1 ---- 0..1 provider_estimate
+                              tokens, exact          EcoLogits, estimated
+```
+
+| table | one row per | holds |
+|---|---|---|
+| `session` | agent session | harness, its session id, transcript path, how it was identified |
+| `run` | `carbon start` | label, state, start/end, `stopped_by`, monitor and agent process, grid, CPU/GPU method, hardware, versions, when usage was saved |
+| `sample` | flush | cumulative duration, energy (`_kwh`), power (`_w`), emissions (`_kg`), water; the last row is the run's total |
+| `api_call` | billed request in the run's window | model, fresh / cache-read / cache-write / output / thinking tokens, subagent flag, latency |
+| `provider_estimate` | request EcoLogits looked at | model computed with and how matched; low and high bounds of energy (kWh), GWP (kg CO2e), ADPe (kg Sb eq), PE (MJ), water (L) |
+
+Views: `run_total` (each run's last sample), `run_tokens` (each run's token
+totals). Tokens and estimates are saved when a run stops, so its report no
+longer needs the transcript; while a run is live they are read from the
+transcript. The machine and provider tables are never joined into one figure.
+
+Query it with any SQLite client, or export: `carbon export @<id>` writes one
+run's samples with CodeCarbon's `emissions.csv` columns, `carbon export
+--format sql` the whole database as SQL text (also the backup).
+
+Each run also has a folder named after its id, holding `monitor.log`
+(CodeCarbon's log; check it if `carbon start` fails) and, briefly, the `stop`
+file `carbon end` uses to stop the monitor. Run folders from before the
+database are imported on first use and moved to `imported/`.
 
 ## Environment variables
 

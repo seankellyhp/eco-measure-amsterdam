@@ -51,12 +51,63 @@ def _from_ipinfo() -> tuple[str, str, str]:
     return c.alpha_3, (r.get("region") or "").lower(), c.name
 
 
+def _supported() -> set[str] | None:
+    """ISO-3 codes codecarbon has grid data for, or None if its data file is not found.
+
+    Read from the file directly: importing codecarbon here would slow every start.
+    """
+    from importlib.util import find_spec
+
+    try:
+        spec = find_spec("codecarbon")
+        for folder in spec.submodule_search_locations or []:
+            path = Path(folder) / "data" / "private_infra" / "global_energy_mix.json"
+            if path.is_file():
+                return set(json.loads(path.read_text(encoding="utf-8")))
+    except (AttributeError, ImportError, OSError, ValueError):
+        pass
+    return None
+
+
+def _checked_country(code: str) -> str:
+    """CARBON_COUNTRY as an ISO-3 code codecarbon knows, else a usage error.
+
+    codecarbon accepts any string and quietly uses the world average for one it
+    does not know, so a typo or a two-letter code would give the wrong CO2e.
+    """
+    from .paths import UsageError
+
+    iso = code
+    if len(code) == 2 and code.isalpha():
+        try:
+            import pycountry
+
+            found = pycountry.countries.get(alpha_2=code)
+        except Exception:
+            found = None
+        if found is not None:
+            iso = found.alpha_3
+    known = _supported()
+    if len(iso) != 3 or not iso.isalpha():
+        raise UsageError(
+            f"CARBON_COUNTRY must be a three-letter ISO country code such as NLD, DEU, GBR or USA, not {code!r}."
+        )
+    if known is not None and iso not in known:
+        raise UsageError(
+            f"CARBON_COUNTRY={code!r}: codecarbon has no electricity grid data for that code. "
+            "Use a three-letter ISO country code such as NLD, DEU, GBR or USA."
+        )
+    return iso
+
+
 def resolve(cache: Path | None = None) -> tuple[str, str, str]:
     """(ISO-3 country, region or '', description of how it was chosen)."""
     explicit = os.environ.get("CARBON_COUNTRY", "").strip().upper()
     if explicit:
+        iso = _checked_country(explicit)
         region = os.environ.get("CARBON_REGION", "").strip().lower()
-        return explicit, region, "set by CARBON_COUNTRY"
+        note = "" if iso == explicit else f" ({explicit} read as {iso})"
+        return iso, region, "set by CARBON_COUNTRY" + note
 
     for name, fn in (("get.geojs.io", _from_geojs), ("ipinfo.io", _from_ipinfo)):
         try:

@@ -15,9 +15,14 @@ The three blocks answer different questions and are never added together.
 `carbon compare` then puts two runs side by side, so you can test whether a
 change (a smaller model, a cleaner context) actually reduced anything.
 
-It runs on **Linux, macOS and Windows** (native, no WSL), in **Claude Code**
-and **Codex CLI**. It is one Python program (`carbon`) plus a skill file that
-tells your agent how to use it.
+It is one Python program (`carbon`) plus a skill file that tells your agent
+how to use it. How far each combination has been tested:
+
+| | Status |
+|---|---|
+| Linux, Claude Code | tested: install, tracking, reports, tokens |
+| macOS, Windows (native, no WSL) | written for both, but not yet run on either; `carbon doctor` tells you whether it works on yours |
+| Codex CLI | the skill installs and the energy measurement works the same way, but tokens are not counted yet, so the report has only the CodeCarbon block; not yet tried in a real Codex session |
 
 ---
 
@@ -57,7 +62,8 @@ so your agent can still call it.
 `carbon install-skill` installs the skill for every agent it finds
 (`~/.claude` for Claude Code, `~/.codex` for Codex); pick one with
 `--agent claude-code` or `--agent codex`. Then restart your agent and type
-`/carbon` (Claude Code) or ask for "carbon tracking" (Codex).
+`/carbon` (Claude Code) or ask for "carbon tracking" (Codex; see the status
+table above for what Codex does not have yet).
 
 `carbon doctor` checks everything and runs a 12-second test measurement. Every
 line should say `ok`; any `PROBLEM` line says what to do.
@@ -102,15 +108,22 @@ Or in a terminal:
 
 ```bash
 carbon start  [label]          # start tracking (default label: "default"); returns at once
-carbon end    [label]          # stop, then print the report
-carbon report [label]          # report for a past or running measurement
+carbon end    [run]            # stop, then print the report
+carbon report [run]            # report for a past or running measurement
 carbon compare A B             # B against A, with changes
 carbon compare --baseline I T  # T with idle run I subtracted
-carbon list                    # all runs, newest first
+carbon list                    # history: every run, newest first, with totals
+carbon export [run] [-o FILE]  # a run's samples as CodeCarbon's emissions.csv
+carbon delete <run>            # delete one stopped run
 ```
 
 `carbon_start`, `carbon_end` and `carbon_report` also work, as aliases.
-Without a label, `end` and `report` use the run you started last.
+Every `carbon start` is a new run with its own id; starting a label again keeps
+the earlier runs. Wherever a command takes a run, give a label (its newest run)
+or `@<id>` from `carbon list`. Without one, `end` and `report` use the run
+started from the same agent session, so two sessions never stop each other's
+runs; in a plain terminal they use the most recent run and say so.
+`carbon list --session`, `--label L` and `-n N` narrow the history.
 
 Tracking stops automatically when the agent session that started it ends, so
 a forgotten measurement never keeps running.
@@ -204,7 +217,7 @@ though, and that power counts towards the total.
 | CPU | measured (RAPL) if readable, else estimate | estimate | measured (Windows EMI, Power Gadget) if available, else estimate |
 | GPU (NVIDIA, AMD) | measured | not tracked separately | measured |
 | RAM | estimate | estimate | estimate |
-| Tokens | exact | exact | exact |
+| Tokens (Claude Code, pi) | exact | exact | exact |
 | Provider inference | estimate | estimate | estimate |
 
 ---
@@ -215,7 +228,7 @@ Set these before `carbon start`:
 
 | Variable | Default | |
 |---|---|---|
-| `CARBON_COUNTRY` | detected | Country whose electricity grid sets this computer's CO2 per kWh, as an ISO-3 code (`NLD`, `DEU`, `GBR`, `USA`...). Set it to skip the location lookup. |
+| `CARBON_COUNTRY` | detected | Country whose electricity grid sets this computer's CO2 per kWh, as an ISO-3 code (`NLD`, `DEU`, `GBR`, `USA`...). Set it to skip the location lookup. A two-letter code (`NL`) is converted; a code CodeCarbon has no grid data for is refused. |
 | `CARBON_REGION` | detected | Region within the country. CodeCarbon uses it for the USA, Canada, China and the Nordic countries (e.g. `california`). |
 | `CARBON_MEASURE_SECS` | `10` | Seconds between power readings, and between saved rows. |
 | `CARBON_RUN_ROOT` | user data folder | Where measurements are stored. |
@@ -270,6 +283,22 @@ only the usage numbers and timestamps in it, not what was said.
 | the skill | `~/.claude/skills/carbon/` (Claude Code, respects `CLAUDE_CONFIG_DIR`), `~/.agents/skills/carbon/` (Codex) |
 | your measurements | `~/.local/share/carbon-skill/runs/` (Linux), `~/Library/Application Support/carbon-skill/runs/` (macOS), `%LOCALAPPDATA%\carbon-skill\carbon-skill\runs\` (Windows) |
 
+Every run is kept in one SQLite database, `carbon.db`, in that folder;
+`carbon start` prints its path as `Data:`. It holds the samples CodeCarbon
+measured (one cumulative row per interval, so the last is the run's total),
+the tokens of each API call, and the EcoLogits estimate for each, saved when
+the run ends, so a report still works after your agent deletes old session
+logs. The tables are described in the skill's `reference/platforms.md`.
+
+CodeCarbon's raw output is one export away:
+`carbon export default > emissions.csv` writes the newest `default` run with
+CodeCarbon's own `emissions.csv` columns, so notebooks that read CodeCarbon
+files keep working. `carbon export --format sql -o backup.sql` writes the
+whole database as SQL text. Each run also has a small folder named after its
+id with CodeCarbon's log, `monitor.log`. Set `CARBON_RUN_ROOT` to store
+everything somewhere else (not a synced folder such as OneDrive). Run folders
+from older versions are imported on first use and moved to `imported/`.
+
 Measurements live outside the skill folder, so reinstalling or uninstalling
 the skill keeps them.
 
@@ -280,7 +309,7 @@ git pull
 uv tool install --reinstall ./carbon_skill
 carbon install-skill
 
-carbon install-skill --remove     # removes the skill folders (keeps your measurements)
+carbon install-skill --remove     # removes the skill (keeps your measurements)
 uv tool uninstall carbon-skill    # removes the program
 ```
 
@@ -294,6 +323,10 @@ the old install predates the installer's marker file, `install-skill` refuses
 to touch it; `carbon install-skill --force` moves it to
 `~/.claude/carbon-skill-backup-<time>/` (your old runs stay there, in `runs/`).
 
+An old run is left where it was, in `~/.claude/skills/carbon/runs/`, if a run
+with the same label already exists in the new folder. `install-skill --remove`
+then removes the skill but keeps that `runs/` folder, and says so.
+
 ---
 
 ## Troubleshooting
@@ -305,7 +338,7 @@ to touch it; `carbon install-skill --force` moves it to
 | `Monitor failed to start` | The lines printed after it come from CodeCarbon's log; `carbon doctor` repeats the test. |
 | `Tokens: session NOT identified` | Energy is still measured. To count tokens, set `CARBON_SESSION_TRANSCRIPT` to the session's `.jsonl` file before `carbon start`. |
 | A run says `stopped by: monitor died` | The monitor was killed (sleep, reboot, task manager). Figures are those of the last saved row, at most one interval old. |
-| Anything else | Look in the run's `monitor.log` (`carbon start` prints the run folder), then run `carbon doctor`. |
+| Anything else | Look in the run's `monitor.log`, in the folder named after its id next to `carbon.db` (`carbon start` prints the database path and the id), then run `carbon doctor`. |
 
 ---
 

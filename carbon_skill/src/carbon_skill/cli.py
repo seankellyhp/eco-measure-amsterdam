@@ -26,17 +26,27 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"carbon-skill {__version__}")
     sub = p.add_subparsers(dest="command", metavar="command")
 
-    s = sub.add_parser("start", help="begin tracking; returns within a few seconds")
+    run_help = "a label (its newest run) or @<id>; default: this session's run"
+    s = sub.add_parser("start", help="begin tracking a new run; returns within a few seconds")
     s.add_argument("label", nargs="?")
     s = sub.add_parser("end", help="stop, then print the report")
-    s.add_argument("label", nargs="?")
+    s.add_argument("label", nargs="?", help=run_help)
     s = sub.add_parser("report", help="report for a past or live run")
-    s.add_argument("label", nargs="?")
+    s.add_argument("label", nargs="?", help=run_help)
     s = sub.add_parser("compare", help="two runs side by side, with deltas")
-    s.add_argument("a", metavar="A", help="first run (or the idle run with --baseline)")
-    s.add_argument("b", metavar="B", help="second run (or the task run with --baseline)")
+    s.add_argument("a", metavar="A", help="first run (or the idle run with --baseline): label or @<id>")
+    s.add_argument("b", metavar="B", help="second run (or the task run with --baseline): label or @<id>")
     s.add_argument("--baseline", action="store_true", help="subtract idle run A, scaled to B's duration, from B")
-    sub.add_parser("list", help="runs, newest first, with state")
+    s = sub.add_parser("list", aliases=["history"], help="every run, newest first, with totals")
+    s.add_argument("--session", action="store_true", help="only runs started from this session")
+    s.add_argument("--label", help="only runs with this label")
+    s.add_argument("-n", type=int, default=20, help="show the newest N (default 20; 0 for all)")
+    s = sub.add_parser("delete", help="delete one stopped run")
+    s.add_argument("label", help="a label (deletes its newest run) or @<id>")
+    s = sub.add_parser("export", help="a run's samples as CodeCarbon CSV, or the database as SQL")
+    s.add_argument("label", nargs="?", help=run_help + " (not with --format sql)")
+    s.add_argument("--format", choices=["csv", "sql"], default="csv")
+    s.add_argument("-o", "--output", metavar="FILE", help="write to FILE instead of stdout")
     s = sub.add_parser("install-skill", help="install the skill into your coding agent(s)")
     s.add_argument("--agent", default="all", choices=["claude-code", "codex", "all"])
     s.add_argument("--remove", action="store_true", help="remove the skill folders this program installed")
@@ -60,10 +70,18 @@ def _dispatch(args: argparse.Namespace) -> int:
         from . import end
 
         return end.command_report(args.label)
-    if cmd == "list":
+    if cmd in ("list", "history"):
         from . import end
 
-        return end.command_list()
+        return end.command_list(args.session, args.label, args.n)
+    if cmd == "delete":
+        from . import end
+
+        return end.command_delete(args.label)
+    if cmd == "export":
+        from . import export
+
+        return export.command(args.label, args.format, args.output)
     if cmd == "compare":
         from . import compare
 
@@ -85,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["_monitor"]:
         if len(argv) != 2:
-            print("usage: carbon _monitor <rundir>", file=sys.stderr)
+            print("usage: carbon _monitor <run id>", file=sys.stderr)
             return 2
         from . import monitor
 

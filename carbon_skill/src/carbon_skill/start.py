@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, locate, paths, procs, runs, tokens
+from . import __version__, db, locate, paths, procs, runs, tokens
 
 MEASURED_CPU = {"RAPL", "PowerMetrics", "Power Gadget", "Windows EMI"}
 MEASURED_GPU = {"pynvml", "amdsmi", "PowerMetrics"}
@@ -68,83 +68,86 @@ def _tail(path: Path, n: int = 15) -> str:
         return "(no monitor.log)"
 
 
-def launch(label: str, quiet: bool = False, set_last: bool = True) -> Path:
-    """Create the run folder and start its monitor; return the run dir.
+def launch(label: str, quiet: bool = False) -> dict:
+    """Insert a new run and start its monitor; return the run.
 
-    Raises paths.Failure if the monitor does not reach `running`.
+    Earlier runs with the same label are kept. Raises paths.Failure if the
+    monitor does not reach `running`.
     """
     paths.check_label(label)
     runs.sweep()
     root = paths.data_root()
-    rundir = root / label
-    if rundir.is_dir():
-        if runs.is_live(rundir):
+    interval = measure_secs()
+    country, region, desc = locate.resolve(root / ".location")
+    for other in db.live_with_label(label):
+        if runs.is_live(other):
             raise paths.Failure(
-                f"A monitor for '{label}' is already running (pid {runs.status(rundir).get('pid')}).\n"
+                f"A monitor for '{label}' is already running (@{other['id']}, pid {other.get('monitor_pid')}).\n"
                 f"Stop it with: carbon end {label}"
             )
-        if any(rundir.iterdir()):
-            if not quiet:
-                print(f"Replacing the previous '{label}' run.")
-            paths.empty_dir(rundir)
-    rundir.mkdir(parents=True, exist_ok=True)
 
     agent = procs.detect_agent()
-    country, region, desc = locate.resolve(root / ".location")
     try:
         sess = tokens.resolve_session(str(agent["pid"]), os.getcwd())
     except Exception:
         sess = None
 
-    runs.write_json(rundir / "run.json", {
+    run_id = db.insert_run({
         "label": label,
-        "measure_secs": measure_secs(),
-        "grid": {"country": country, "region": region, "description": desc},
-        "agent": agent,
+        "state": "starting",
+        "created_at": runs.now_iso(),
+        "agent_pid": agent["pid"],
+        "agent_ctime": agent.get("create_time"),
+        "agent_name": agent.get("name"),
+        "agent_how": agent.get("how"),
         "cwd": os.getcwd(),
-        "version": __version__,
-    })
-    if sess:
-        runs.write_json(rundir / "session.json", sess)
-    if set_last:
-        paths.set_last(label)
-
+        "measure_secs": interval,
+        "grid_country": country,
+        "grid_region": region,
+        "grid_source": desc,
+        "carbon_version": __version__,
+    }, sess)
+    rundir = paths.run_dir(run_id)
     log = rundir / "monitor.log"
-    proc = procs.spawn_detached(
-        [sys.executable, "-m", "carbon_skill", "_monitor", str(rundir)], log, rundir
-    )
+    try:
+        rundir.mkdir(parents=True, exist_ok=True)
+        proc = procs.spawn_detached(
+            [sys.executable, "-m", "carbon_skill", "_monitor", str(run_id)], log, rundir
+        )
+        # Recorded at once, so a sweep from another command never takes the
+        # run for one whose monitor died.
+        runs.update_status(run_id, monitor_pid=proc.pid, monitor_ctime=procs.create_time(proc.pid))
+    except BaseException as exc:
+        runs.update_status(run_id, state="failed", error=f"could not start the monitor: {exc!r}")
+        raise
 
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        state = runs.status(rundir).get("state")
+        state = runs.status(run_id).get("state")
         if state in ("running", "failed"):
             break
         if proc.poll() is not None:
             break
         time.sleep(0.25)
-    st = runs.status(rundir)
+    st = runs.status(run_id)
     if st.get("state") != "running":
         if proc.poll() is None and st.get("state") != "failed":
             procs.stop_process(proc.pid, None)
-        runs.update_status(rundir, state="failed", error=st.get("error") or "monitor did not start")
+        runs.update_status(run_id, state="failed", error=st.get("error") or "monitor did not start")
         raise paths.Failure("Monitor failed to start. Last lines of monitor.log:\n" + _tail(log))
-    return rundir
+    return st
 
 
 def command(label: str | None) -> int:
     label = paths.check_label(label or "default")
-    rundir = launch(label)
-    info = runs.run_info(rundir)
-    st = runs.status(rundir)
-    grid = info["grid"]
-    agent = info["agent"]
-    cpu, gpu = st.get("cpu_method", "unknown"), st.get("gpu_method", "unknown")
+    st = launch(label)
+    cpu, gpu = st.get("cpu_method") or "unknown", st.get("gpu_method") or "unknown"
 
-    print(f"Tracking '{label}'  (pid {st.get('pid')}, sampling every {info['measure_secs']:g}s)")
-    print(f"Run dir: {rundir}")
-    region = f" / {grid['region']}" if grid.get("region") else ""
-    print(f"Grid: {grid['country']}{region} - {grid['description']}")
-    if "LOOKUP FAILED - assuming" in grid["description"]:
+    print(f"Tracking '{label}' as @{st['id']}  (pid {st.get('monitor_pid')}, sampling every {st['measure_secs']:g}s)")
+    print(f"Data: {db.path()}")
+    region = f" / {st['grid_region']}" if st.get("grid_region") else ""
+    print(f"Grid: {st['grid_country']}{region} - {st['grid_source']}")
+    if "LOOKUP FAILED - assuming" in st["grid_source"]:
         print("WARNING: the electricity grid was not detected, so CO2e may be for the wrong country. "
               "Set CARBON_COUNTRY (ISO-3, e.g. NLD, DEU, GBR, USA) and start again.", file=sys.stderr)
     if cpu in MEASURED_CPU:
@@ -160,12 +163,12 @@ def command(label: str | None) -> int:
     if advice:
         print(advice, file=sys.stderr)
         sys.stderr.flush()
-    sess = runs.session(rundir)
+    sess = runs.session(st)
     if sess:
         print(f"Tokens: {sess['harness']} - {sess.get('id') or sess['transcript']} (via {sess['how']})")
     else:
         sys.stdout.flush()
         print("Tokens: session NOT identified - the report will omit token counts", file=sys.stderr)
-    print(f"Auto-stop: when {agent['name']} (pid {agent['pid']}) exits, the monitor stops this run")
+    print(f"Auto-stop: when {st['agent_name']} (pid {st['agent_pid']}) exits, the monitor stops this run")
     print(f"Stop with: carbon end {label}")
     return 0

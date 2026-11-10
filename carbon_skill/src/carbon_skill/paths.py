@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 from pathlib import Path
 
 LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -44,38 +43,15 @@ def check_label(label: str) -> str:
     return label
 
 
-def run_dir(label: str) -> Path:
-    return data_root() / check_label(label)
+def run_dir(run_id: int) -> Path:
+    """The folder holding a run's monitor.log and stop sentinel."""
+    return data_root() / str(int(run_id))
 
 
-def last_label() -> str | None:
-    try:
-        label = (data_root() / ".last").read_text().strip()
-    except OSError:
-        return None
-    return label if valid_label(label) else None
-
-
-def set_last(label: str) -> None:
-    (data_root() / ".last").write_text(label + "\n")
-
-
-def label_or_last(label: str | None) -> str:
-    """The given label, else the most recently started run, else 'default'."""
-    if label:
-        return check_label(label)
-    return last_label() or "default"
-
-
-def all_labels() -> list[str]:
-    root = data_root()
-    return sorted(p.name for p in root.iterdir() if p.is_dir() and valid_label(p.name))
-
-
-def empty_dir(path: Path) -> None:
-    """Remove everything inside `path`, keeping the folder."""
-    for child in path.iterdir():
-        if child.is_dir() and not child.is_symlink():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
+def parse_ref(ref: str) -> tuple[str | None, int | None]:
+    """(label, None) for a label, (None, id) for '@<id>'. '@' is never part of a label."""
+    if ref.startswith("@"):
+        if ref[1:].isdigit():
+            return None, int(ref[1:])
+        raise UsageError(f"Invalid run id {ref!r}: write @ followed by the number shown by carbon list.")
+    return check_label(ref), None

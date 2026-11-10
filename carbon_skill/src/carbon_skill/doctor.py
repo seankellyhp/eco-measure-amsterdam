@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
 
-from . import __version__, agents, paths, procs, runs, tokens
+from . import __version__, agents, db, paths, procs, runs, tokens
 
 LABEL = "doctor-check"
 
@@ -44,6 +45,19 @@ def command(measure: bool = True) -> int:
         ok(f"data folder writable: {root}")
     except OSError as exc:
         bad(f"data folder not writable ({exc}): set CARBON_RUN_ROOT to a writable folder")
+
+    sv = sqlite3.sqlite_version
+    try:
+        version, check = db.health()
+        if check != "ok":
+            bad(f"database {db.path()} fails its integrity check ({check}): "
+                "back it up with `carbon export --format sql -o carbon.sql`, then move carbon.db aside")
+        else:
+            ok(f"database {db.path()} (schema {version}, SQLite {sv})")
+    except paths.Failure as exc:
+        bad(str(exc))
+    except sqlite3.Error as exc:
+        bad(f"database {db.path()} does not open ({exc}); SQLite {sv}")
 
     on_path = shutil.which("carbon")
     cmd = agents.carbon_cmd()
@@ -90,21 +104,22 @@ def _measure() -> int:
 
     old = os.environ.get("CARBON_PARENT_PID")
     os.environ["CARBON_PARENT_PID"] = str(os.getpid())
-    rundir = paths.data_root() / LABEL
     try:
         print("...      measuring for 12 s")
         sys.stdout.flush()
-        start.launch(LABEL, quiet=True, set_last=False)
+        run = start.launch(LABEL, quiet=True)
+        rundir = paths.run_dir(run["id"])
         time.sleep(12)
-        end.stop(LABEL)
-        st = runs.status(rundir)
-        f = report.figures(rundir)
+        end.stop(run)
+        st = runs.status(run["id"])
+        f = report.figures(run["id"])
         if f is None:
-            print(f"PROBLEM  test measurement wrote no emissions.csv row; see {rundir / 'monitor.log'}")
+            print(f"PROBLEM  test measurement saved no sample; see {rundir / 'monitor.log'}")
             return 1
-        cpu, gpu = st.get("cpu_method", "unknown"), st.get("gpu_method", "unknown")
+        cpu, gpu = st.get("cpu_method") or "unknown", st.get("gpu_method") or "unknown"
         kind = "measured" if cpu in start.MEASURED_CPU else "ESTIMATE"
         print(f"ok       test measurement: {f['energy'] * 1000:.3f} Wh; CPU {cpu} ({kind}); GPU {gpu}")
+        db.delete_run(run["id"])
         shutil.rmtree(rundir, ignore_errors=True)
         return 0
     except paths.Failure as exc:

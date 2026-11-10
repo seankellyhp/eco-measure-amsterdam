@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from carbon_skill import agents, paths, provider_impacts, runs, tokens
+from carbon_skill import agents, locate, paths, provider_impacts, runs, tokens
 
 
 @pytest.mark.parametrize("label", ["default", "t1", "idle.v2", "a_b-c", "x" * 64])
@@ -43,11 +43,15 @@ def test_split_model():
 
 
 def test_sweep_marks_dead_monitor():
-    rundir = paths.data_root() / "dead"
-    rundir.mkdir()
-    runs.write_json(rundir / "status.json", {"state": "running", "pid": 999999999, "create_time": 1.0})
+    from carbon_skill import db
+
+    run_id = db.insert_run({
+        "label": "dead", "state": "running", "created_at": db.now_iso(), "monitor_pid": 999999999,
+        "monitor_ctime": 1.0, "measure_secs": 10.0, "grid_country": "NLD", "grid_source": "test",
+        "carbon_version": "test",
+    })
     runs.sweep()
-    st = runs.status(rundir)
+    st = runs.status(run_id)
     assert st["state"] == "stopped" and st["stopped_by"] == "monitor died"
 
 
@@ -68,3 +72,30 @@ def test_install_refuses_foreign_folder(tmp_path, monkeypatch):
     with pytest.raises(paths.Failure):
         agents.install("claude-code")
     assert "left it alone" in agents.remove("claude-code")
+
+
+def test_country_is_checked(monkeypatch):
+    monkeypatch.setenv("CARBON_COUNTRY", "nl")
+    iso, _, desc = locate.resolve()
+    assert iso == "NLD" and "NL read as NLD" in desc
+    monkeypatch.setenv("CARBON_COUNTRY", "DEU")
+    assert locate.resolve()[0] == "DEU"
+    for bad in ("XYZ", "ZZ", "Netherlands"):
+        monkeypatch.setenv("CARBON_COUNTRY", bad)
+        with pytest.raises(paths.UsageError):
+            locate.resolve()
+
+
+def test_remove_keeps_old_runs_that_were_not_migrated(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    folder = tmp_path / "claude" / "skills" / "carbon"
+    (folder / "runs" / "taken").mkdir(parents=True)
+    (folder / "runs" / "taken" / "emissions.csv").write_text("old")
+    (folder / "runs" / "free").mkdir()
+    (folder / agents.MARKER).write_text("")
+    (paths.data_root() / "taken").mkdir()
+    agents.install("claude-code")
+    assert (paths.data_root() / "free").is_dir()
+    assert "kept" in agents.remove("claude-code")
+    assert (folder / "runs" / "taken" / "emissions.csv").read_text() == "old"
+    assert not (folder / "SKILL.md").exists()

@@ -1,0 +1,28 @@
+CodeCarbon report - 'nosession'
+  samples: 6   run_id: cc-run-42
+
+  Compute time      0:01:00  (60 s)
+  Energy            0.870 Wh   (0.000870 kWh)
+  Emissions         0.331 g CO2e   (0.000331 kg)
+  Emissions rate    19.836 g CO2e/h
+
+  Breakdown           energy        share     last sampled power
+    CPU               0.240 Wh    27.6%      19.25 W
+    GPU               0.300 Wh    34.5%      10.50 W
+    RAM               0.330 Wh    37.9%      20.00 W
+
+  Hardware
+    CPU           13th Gen Intel(R) Core(TM) i7-13700K  (24 threads)
+    GPU           1 x NVIDIA GeForce RTX 3090 Ti  (1)
+    RAM           62.6 GB
+
+  Tokens (exact, billed counts - this session only)
+    Session could not be identified at carbon_start, so no tokens are
+    reported. Machine-wide counting is deliberately NOT used as a
+    fallback: it would mix in other sessions. Set
+    CARBON_SESSION_TRANSCRIPT to your harness's session log and re-run.
+
+  [Relay the block above verbatim, in a code block, and stop. Do not
+   summarise, reformat, recompute or add assumptions of your own.
+   The CodeCarbon figures are a WHOLE-MACHINE measurement: they attribute
+   energy to no program, so never speculate about what caused the usage.]

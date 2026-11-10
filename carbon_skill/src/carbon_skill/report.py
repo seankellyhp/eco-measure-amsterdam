@@ -2,22 +2,9 @@
 
 from __future__ import annotations
 
-import csv
 from datetime import datetime
-from pathlib import Path
 
-from . import sections
-
-
-def num(row: dict[str, str], key: str) -> float:
-    try:
-        return float(row.get(key, "") or 0.0)
-    except ValueError:
-        return 0.0
-
-
-def txt(row: dict[str, str], key: str) -> str:
-    return (row.get(key) or "").strip() or "n/a"
+from . import db, sections
 
 
 def hms(seconds: float) -> str:
@@ -25,44 +12,37 @@ def hms(seconds: float) -> str:
     return f"{s // 3600:d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
 
 
-def last_row(csv_path: Path) -> tuple[dict[str, str], int] | None:
-    """The last row of the last run_id, and how many rows that run has.
+def _txt(value) -> str:
+    """A hardware fact as CodeCarbon's CSV showed it: whole counts without '.0'."""
+    if value is None or value == "":
+        return "n/a"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip() or "n/a"
 
-    Rows are cumulative from tracker start, so the last one is the run's total.
+
+def figures(run_id: int) -> dict | None:
+    """A run's machine figures as data (kWh, kg, s, W), or None if no sample yet.
+
+    Samples are cumulative from tracker start, so the last one is the run's total.
     """
-    try:
-        with open(csv_path, newline="") as fh:
-            rows = list(csv.DictReader(fh))
-    except OSError:
-        return None
-    if not rows:
-        return None
-    last_run = rows[-1].get("run_id")
-    run_rows = [r for r in rows if r.get("run_id") == last_run]
-    return run_rows[-1], len(run_rows)
-
-
-def figures(rundir: Path) -> dict | None:
-    """A run's machine figures as data (kWh, kg, s, W), or None if no row yet."""
-    found = last_row(Path(rundir) / "emissions.csv")
+    found = db.last_sample(run_id)
     if found is None:
         return None
     r, samples = found
     return {
-        "row": r,
         "samples": samples,
-        "run_id": r.get("run_id"),
-        "timestamp": r.get("timestamp"),
-        "duration": num(r, "duration"),
-        "energy": num(r, "energy_consumed"),
-        "emissions": num(r, "emissions"),
-        "emissions_rate": num(r, "emissions_rate"),
-        "cpu_energy": num(r, "cpu_energy"),
-        "gpu_energy": num(r, "gpu_energy"),
-        "ram_energy": num(r, "ram_energy"),
-        "cpu_power": num(r, "cpu_power"),
-        "gpu_power": num(r, "gpu_power"),
-        "ram_power": num(r, "ram_power"),
+        "timestamp": r["ts"],
+        "duration": r["duration_s"],
+        "energy": r["energy_kwh"],
+        "emissions": r["emissions_kg"],
+        "emissions_rate": r["emissions_rate_kg_s"],
+        "cpu_energy": r["cpu_energy_kwh"],
+        "gpu_energy": r["gpu_energy_kwh"],
+        "ram_energy": r["ram_energy_kwh"],
+        "cpu_power": r["cpu_power_w"],
+        "gpu_power": r["gpu_power_w"],
+        "ram_power": r["ram_power_w"],
     }
 
 
@@ -73,12 +53,12 @@ def _as_of(timestamp: str | None) -> str:
         return datetime.now().strftime("%H:%M:%S")
 
 
-def render(label: str, rundir: Path, live: bool) -> list[str] | None:
+def render(run: dict, live: bool) -> list[str] | None:
     """The full report as lines, or None if there is no measurement yet."""
-    f = figures(rundir)
+    f = figures(run["id"])
     if f is None:
         return None
-    r = f["row"]
+    label = run["label"]
     energy = f["energy"]
     cpu_e, gpu_e, ram_e = f["cpu_energy"], f["gpu_energy"], f["ram_energy"]
 
@@ -88,7 +68,7 @@ def render(label: str, rundir: Path, live: bool) -> list[str] | None:
     suffix = f"  [LIVE - as of {_as_of(f['timestamp'])}; final after carbon end]" if live else ""
     out = [
         f"CodeCarbon report - '{label}'" + suffix,
-        f"  samples: {f['samples']}   run_id: {f['run_id']}",
+        f"  samples: {f['samples']}   run_id: {_txt(run.get('codecarbon_run_id'))}",
         "",
         f"  Compute time      {hms(f['duration'])}  ({f['duration']:,.0f} s)",
         f"  Energy            {energy * 1000:,.3f} Wh   ({energy:.6f} kWh)",
@@ -101,10 +81,10 @@ def render(label: str, rundir: Path, live: bool) -> list[str] | None:
         f"    RAM           {ram_e * 1000:9,.3f} Wh   {share(ram_e)}   {f['ram_power']:8,.2f} W",
         "",
         "  Hardware",
-        f"    CPU           {txt(r, 'cpu_model')}  ({txt(r, 'cpu_count')} threads)",
-        f"    GPU           {txt(r, 'gpu_model')}  ({txt(r, 'gpu_count')})",
-        f"    RAM           {num(r, 'ram_total_size'):.1f} GB",
+        f"    CPU           {_txt(run.get('cpu_model'))}  ({_txt(run.get('cpu_count'))} threads)",
+        f"    GPU           {_txt(run.get('gpu_model'))}  ({_txt(run.get('gpu_count'))})",
+        f"    RAM           {run.get('ram_total_gb') or 0.0:.1f} GB",
         "",
     ]
-    usage = sections.usage_sections(rundir)
+    usage = sections.usage_sections(run)
     return out + usage + sections.footer(usage)

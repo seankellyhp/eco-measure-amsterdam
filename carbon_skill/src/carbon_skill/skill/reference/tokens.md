@@ -38,7 +38,7 @@ energy figures, by contrast, are whole-machine.
 ## How the session is identified
 
 Resolved once by `carbon start` (it runs inside the agent's environment) and
-written to `session.json` in the run folder. Three tiers, in order; the one
+stored with the run (the `session` table). Three tiers, in order; the one
 used is printed by `carbon start`:
 
 1. **The harness's session-id variable** (`$CLAUDE_CODE_SESSION_ID`), resolved

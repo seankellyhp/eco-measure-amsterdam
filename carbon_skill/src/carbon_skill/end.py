@@ -1,89 +1,127 @@
-"""carbon end, carbon report and carbon list."""
+"""carbon end, carbon report, carbon list and carbon delete."""
 
 from __future__ import annotations
 
+import shutil
 import sys
 
-from . import paths, report, runs
+from . import db, paths, report, runs
 
 
-def stop(label: str) -> bool:
-    """Stop a live run. Returns False if it was not live."""
-    rundir = paths.data_root() / label
-    if not runs.is_live(rundir):
+def stop(run: dict) -> bool:
+    """Stop a live run and save its usage. Returns False if it was not live."""
+    if not runs.is_live(run):
         return False
-    runs.request_stop(rundir)
-    if not runs.wait_stopped(rundir, 40):
-        runs.force_stop(rundir, "carbon end")
+    runs.request_stop(run)
+    if not runs.wait_stopped(run, 40):
+        runs.force_stop(run, "carbon end")
+    from . import usage
+
+    usage.save(run["id"])
     return True
 
 
-def command_end(label: str | None) -> int:
-    label = paths.label_or_last(label)
+def command_end(ref: str | None) -> int:
     runs.sweep()
-    rundir = paths.data_root() / label
-    if not rundir.is_dir():
-        return _unknown(label)
-    if stop(label):
-        print(f"Stopped '{label}'.")
+    run = runs.find(ref)
+    if stop(run):
+        print(f"Stopped '{run['label']}'.")
         print()
     else:
-        print(f"'{label}' is not running; reporting what was saved.", file=sys.stderr)
+        print(f"'{run['label']}' is not running; reporting what was saved.", file=sys.stderr)
     sys.stdout.flush()
-    return _print_report(label)
+    return _print_report(run["id"])
 
 
-def command_report(label: str | None) -> int:
-    label = paths.label_or_last(label)
+def command_report(ref: str | None) -> int:
     runs.sweep()
-    if not (paths.data_root() / label).is_dir():
-        return _unknown(label)
-    return _print_report(label)
+    run = runs.find(ref)
+    return _print_report(run["id"])
 
 
-def _unknown(label: str) -> int:
-    labels = paths.all_labels()
-    print(f"No run named '{label}'. Available runs:", file=sys.stderr)
-    print("\n".join(f"  {x}" for x in labels) if labels else "  (none)", file=sys.stderr)
-    return 1
-
-
-def _print_report(label: str) -> int:
-    rundir = paths.data_root() / label
-    st = runs.status(rundir)
-    live = runs.is_live(rundir)
-    lines = report.render(label, rundir, live)
+def _print_report(run_id: int) -> int:
+    run = runs.status(run_id)
+    live = runs.is_live(run)
+    lines = report.render(run, live)
     if lines is None:
-        secs = runs.run_info(rundir).get("measure_secs", 10)
         if live:
-            print(f"No measurement yet - wait {secs:g} s.", file=sys.stderr)
+            print(f"No measurement yet - wait {run.get('measure_secs') or 10:g} s.", file=sys.stderr)
         else:
-            print(f"No measurement was saved for '{label}'.", file=sys.stderr)
-            if st.get("error"):
-                print(st["error"], file=sys.stderr)
+            print(f"No measurement was saved for {runs.name(run)}.", file=sys.stderr)
+            if run.get("error"):
+                print(run["error"], file=sys.stderr)
         return 1
-    stopped_by = st.get("stopped_by")
+    stopped_by = run.get("stopped_by")
     if not live and stopped_by and stopped_by != "carbon end":
         print(f"(stopped by: {stopped_by})")
     print("\n".join(lines))
     return 0
 
 
-def command_list() -> int:
+# --------------------------------------------------------------------------- #
+# history
+# --------------------------------------------------------------------------- #
+
+LIST_FOOTER = [
+    "  [Relay the table above verbatim, in a code block, and stop. Do not",
+    "   summarise, reformat, recompute or add assumptions of your own. Energy",
+    "   and CO2e are WHOLE-MACHINE measurements. For one run's full report,",
+    "   including its EcoLogits estimate: carbon report @<id>]",
+]
+
+
+def _started(iso: str | None) -> str:
+    return (iso or "-")[:19].replace("T", " ")
+
+
+def _or_dash(value, fmt: str) -> str:
+    return "-" if value is None else format(value, fmt)
+
+
+def command_list(session_only: bool = False, label: str | None = None, n: int = 20) -> int:
     runs.sweep()
-    root = paths.data_root()
-    rows = []
-    for label in paths.all_labels():
-        st = runs.status(root / label)
-        state = st.get("state", "?")
-        if state in runs.LIVE_STATES and not runs.monitor_alive(st):
-            state = "dead"
-        rows.append((st.get("started_at") or "", label, state, st.get("stopped_by") or ""))
+    if label:
+        paths.check_label(label)
+    if n < 0:
+        raise paths.UsageError("-n must be 0 (all) or more")
+    sid = agent = None
+    if session_only:
+        here_agent, sess, _ = runs.here()
+        sid = db.find_session(sess)
+        agent = (here_agent["pid"], here_agent.get("create_time"))
+    rows = db.list_runs(label=label, session_id=sid, agent=agent, limit=n)
     if not rows:
-        print(f"No runs in {root}")
+        where = " in this session" if session_only else ""
+        print(f"No runs{where}{f' labelled {label!r}' if label else ''} in {db.path()}")
         return 0
-    rows.sort(reverse=True)
-    print(f"{'label':<24} {'state':<9} {'started':<26} stopped by")
-    for started, label, state, why in rows:
-        print(f"{label:<24} {state:<9} {started:<26} {why}")
+    print(f"  {'id':>4}  {'label':<16} {'state':<8} {'started':<19}  {'duration':>8} "
+          f"{'energy Wh':>10} {'CO2e g':>9} {'calls':>6} {'tokens sent':>12}")
+    for r in rows:
+        dur = report.hms(r["duration_s"]) if r["duration_s"] is not None else "-"
+        energy = None if r["energy_kwh"] is None else r["energy_kwh"] * 1000
+        co2 = None if r["emissions_kg"] is None else r["emissions_kg"] * 1000
+        saved = r["usage_saved_at"] is not None
+        print(
+            f"  {r['id']:>4}  {r['label'][:16]:<16} {r['state']:<8} {_started(r['started_at']):<19}  {dur:>8} "
+            f"{_or_dash(energy, ',.3f'):>10} {_or_dash(co2, ',.3f'):>9} "
+            f"{_or_dash(r['calls'] or 0 if saved else None, ',d'):>6} "
+            f"{_or_dash(r['sent'] or 0 if saved else None, ',d'):>12}"
+        )
+    print()
+    print("\n".join(LIST_FOOTER))
+    return 0
+
+
+def command_delete(ref: str) -> int:
+    runs.sweep()
+    run = runs.find(ref)
+    if runs.is_live(run):
+        raise paths.Failure(f"Run {runs.name(run)} is still running. Stop it first: carbon end @{run['id']}")
+    db.delete_run(run["id"])
+    shutil.rmtree(paths.run_dir(run["id"]), ignore_errors=True)
+    print(f"Deleted run {runs.name(run)}.")
+    if not ref.startswith("@"):
+        left = db.count_label(run["label"])
+        if left:
+            print(f"{left} older run(s) labelled '{run['label']}' remain. See: carbon list --label {run['label']}")
     return 0

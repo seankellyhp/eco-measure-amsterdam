@@ -82,11 +82,13 @@ OPENROUTER_API_KEY=sk-or-...
 
 ## Optional: measure your AI agent with `/carbon`
 
-[carbon_skill/](carbon_skill/) is a program plus a skill for coding agents
-([Claude Code](https://claude.com/claude-code), Codex CLI) that applies the same tools to
+[carbon_skill/](carbon_skill/) is a program plus a skill for
+[Claude Code](https://claude.com/claude-code) that applies the same tools to
 an agent's own work: what the computer used while the agent worked (CodeCarbon),
 how many tokens the session used, and an estimate of what generating them cost
-in the provider's datacenter (EcoLogits). Linux, macOS and Windows.
+in the provider's datacenter (EcoLogits). Tested on Linux; written for macOS
+and Windows too, but not yet run there. Codex CLI gets the energy measurement
+only, without token counts.
 After cloning the repository:
 
 ```bash
@@ -105,7 +107,7 @@ carbon_skill/README.md". See [carbon_skill/README.md](carbon_skill/README.md).
 | [notebooks/](notebooks/) | The three notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`). |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
 | [figures/](figures/) | Images used in the notebooks. |
-| [carbon_skill/](carbon_skill/) | The optional `/carbon` program and skill for coding agents. |
+| [carbon_skill/](carbon_skill/) | The optional `/carbon` program and skill for Claude Code. |
 
 The notebooks are generated from the Quarto sources. After editing a `.qmd`
 file, rebuild the notebooks with

@@ -12,7 +12,7 @@ from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
-from . import paths, runs
+from . import paths
 
 MARKER = ".installed-by-carbon-skill"
 PLACEHOLDER = "{{CARBON_CMD}}"
@@ -87,7 +87,7 @@ def _copy_tree(src, dest: Path, cmd: str) -> None:
 
 
 def _migrate_old(folder: Path) -> list[str]:
-    """Move runs out of a bash-era install and remove its program files."""
+    """Move runs out of a bash-era install into the database, and remove its program files."""
     notes = []
     old_runs = folder / "runs"
     if old_runs.is_dir():
@@ -99,10 +99,13 @@ def _migrate_old(folder: Path) -> list[str]:
                 notes.append(f"  kept old run '{d.name}' in place: a run with that name already exists")
                 continue
             shutil.move(str(d), str(root / d.name))
-            _convert_old_run(root / d.name)
             notes.append(f"  moved old run '{d.name}' to {root / d.name}")
         if not any(old_runs.iterdir()):
             old_runs.rmdir()
+        from . import db, legacy
+
+        db.connect().close()  # creates the database, which imports on first open
+        notes += legacy.import_all(quiet=True)
     for name in OLD_LAYOUT:
         p = folder / name
         if p.is_dir():
@@ -110,25 +113,6 @@ def _migrate_old(folder: Path) -> list[str]:
         elif p.exists():
             p.unlink()
     return notes
-
-
-def _convert_old_run(rundir: Path) -> None:
-    """Give a bash-era run a status.json so the report can find its window."""
-    if (rundir / "status.json").exists():
-        return
-
-    def read(name: str) -> str | None:
-        try:
-            return (rundir / name).read_text().strip() or None
-        except OSError:
-            return None
-
-    runs.write_json(rundir / "status.json", {
-        "state": "stopped",
-        "started_at": read("started_at"),
-        "ended_at": read("ended_at"),
-        "stopped_by": (read("stopped_by") or "carbon end").replace("carbon_end", "carbon end"),
-    })
 
 
 def install(name: str, force: bool = False) -> list[str]:
@@ -163,6 +147,21 @@ def remove(name: str) -> str:
         return f"Nothing installed for {name} at {folder}"
     if not (folder / MARKER).exists():
         return f"{folder} was not installed by carbon-skill; left it alone."
+    old_runs = folder / "runs"
+    if old_runs.is_dir() and any(p.is_dir() for p in old_runs.iterdir()):
+        # Runs the upgrade could not move (their label was taken or is not valid).
+        for child in folder.iterdir():
+            if child.name in ("runs", MARKER):
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        return (
+            f"Removed the skill from {folder}\n"
+            f"  kept {old_runs}: it holds old runs that were not moved to the measurements folder.\n"
+            "  Move or delete that folder yourself."
+        )
     shutil.rmtree(folder)
     return f"Removed {folder}"
 

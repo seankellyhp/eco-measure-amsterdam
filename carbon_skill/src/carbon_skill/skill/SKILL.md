@@ -22,17 +22,27 @@ Two scopes, measured and reported separately, never summed:
 ## Commands
 
 ```sh
-{{CARBON_CMD}} start  [label]        # begin tracking; returns in a few seconds
-{{CARBON_CMD}} end    [label]        # stop, then print the report
-{{CARBON_CMD}} report [label]        # report for a past or live run
+{{CARBON_CMD}} start  [label]        # begin a new run; returns in a few seconds
+{{CARBON_CMD}} end    [run]          # stop, then print the report
+{{CARBON_CMD}} report [run]          # report for a past or live run
 {{CARBON_CMD}} compare A B           # B against A, with deltas
 {{CARBON_CMD}} compare --baseline IDLE TASK   # TASK minus idle run, scaled
-{{CARBON_CMD}} list                  # runs, newest first
+{{CARBON_CMD}} list [--session] [--label L] [-n N]   # history, newest first
+{{CARBON_CMD}} export [run] [--format csv|sql] [-o FILE]   # CodeCarbon CSV, or the database as SQL
+{{CARBON_CMD}} delete <run>          # delete one stopped run
 {{CARBON_CMD}} doctor                # check the installation
 ```
 
-Labels default to `default` for `start` and to the last started run otherwise.
-A run stops by itself when this agent session exits.
+`start` defaults to the label `default`. Every `start` is a new run with its
+own id; earlier runs with the same label are kept. A `[run]` is a label (its
+newest run) or `@<id>` (one exact run, as shown by `list`). Without one, `end`
+and `report` use **this session's** run; if this session started none they
+fail rather than touch another session's run. A run stops by itself when this
+agent session exits.
+
+**History only on request.** `end` reports this session's run and nothing
+else. Run `list` only when the user asks about past or other runs, then
+`report @<id>` for one of them.
 
 **Never run the `codecarbon` CLI directly**, and never `pip install` anything:
 these commands are the whole interface. If one fails, show the error and
@@ -40,7 +50,7 @@ suggest `{{CARBON_CMD}} doctor`.
 
 ## Rules for reporting
 
-- **Relay verbatim.** Show the output of `end`, `report` and `compare` in a
+- **Relay verbatim.** Show the output of `end`, `report`, `compare` and `list` in a
   code block and stop. Do not summarise, reformat, recompute or explain causes.
 - **Never sum the scopes.** CodeCarbon (this machine) and EcoLogits (provider)
   are different scopes and methods; never present a combined total.
@@ -75,4 +85,4 @@ block, which prices output tokens only.
 
 - `reference/methodology.md` - how the EcoLogits estimate works and how to read the report honestly; open when quoting provider figures or explaining a caveat.
 - `reference/tokens.md` - token accounting and session identification; open when tokens are missing or look wrong.
-- `reference/platforms.md` - per-OS support, grid detection, run lifecycle, run folder files, environment variables; open for setup or troubleshooting.
+- `reference/platforms.md` - per-OS support, grid detection, run lifecycle, the data model (what is stored where), environment variables; open for setup, troubleshooting or querying the database.

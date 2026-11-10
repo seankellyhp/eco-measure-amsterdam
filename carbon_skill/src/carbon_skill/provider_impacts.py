@@ -31,8 +31,8 @@ so one calculation over 185k output tokens is a different number from the sum
 of 183 calculations - and the wrong one. Per-request results are kept and can
 be dumped with `--json`.
 
-    python -m carbon_skill.provider_impacts --json <rundir>   per-request results
-    python -m carbon_skill.provider_impacts <rundir>          the report section
+    python -m carbon_skill.provider_impacts --json <label|@id>   per-request results
+    python -m carbon_skill.provider_impacts <label|@id>          the report section
 
 Nothing here is a measurement of any provider's infrastructure, and nothing
 here may be added to the CodeCarbon figures: different scopes, different
@@ -420,8 +420,11 @@ def _panel(label: str, ests: list[Estimate], attr: str, value: Any, scale: float
     return [ln.ljust(PANEL) for ln in lines]
 
 
-def render(calls) -> list[str]:
-    """The provider-inference section, as lines. Empty if there is nothing to say."""
+def render(calls, ests: list[Estimate] | None = None) -> list[str]:
+    """The provider-inference section, as lines. Empty if there is nothing to say.
+
+    `ests` are the stored estimates of a finished run; computed when None.
+    """
     if not calls:
         return []
     if not AVAILABLE:
@@ -432,7 +435,8 @@ def render(calls) -> list[str]:
             "",
         ]
 
-    ests = estimate(calls)
+    if ests is None:
+        ests = estimate(calls)
     agg = total(ests)
 
     out = ["  Provider inference (EcoLogits estimate)"]
@@ -516,28 +520,30 @@ def main() -> int:
     import json
     import sys
 
-    from . import runs, tokens
+    from . import paths, runs, usage
 
     argv = sys.argv[1:]
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
     if not argv:
-        print("usage: provider_impacts.py [--json] <rundir>", file=sys.stderr)
+        print("usage: python -m carbon_skill.provider_impacts [--json] <label|@id>", file=sys.stderr)
         return 2
-    rundir = argv[0]
-
-    st = runs.status(rundir)
-    started = st.get("started_at")
-    if not started:
-        print(f"No started_at in {rundir}/status.json", file=sys.stderr)
+    try:
+        run = runs.find(argv[0])
+    except (paths.Failure, paths.UsageError) as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    calls = tokens.load(started, st.get("ended_at"), runs.session(rundir))
+    if not run.get("started_at"):
+        print(f"Run {runs.name(run)} never started.", file=sys.stderr)
+        return 1
+    calls, ests = usage.for_report(run)
     if calls is None:
         print("Session could not be identified; no usage to estimate from.", file=sys.stderr)
         return 1
 
     if as_json:
-        ests = estimate(calls)
+        if ests is None:
+            ests = estimate(calls)
         agg = total(ests)
         print(
             json.dumps(
@@ -561,15 +567,15 @@ def main() -> int:
         )
         return 0
 
-    print("\n".join(render(calls)))
+    print("\n".join(render(calls, ests)))
     return 0
 
 
-def summary(calls) -> dict | None:
+def summary(calls, ests: list[Estimate] | None = None) -> dict | None:
     """Session totals as (low, high) pairs in Wh and g, or None if nothing was modelled."""
     if not calls or not AVAILABLE:
         return None
-    agg = total(estimate(calls))
+    agg = total(ests if ests is not None else estimate(calls))
     if agg.n == 0:
         return None
 

@@ -388,7 +388,9 @@ def render(
 
     transcript = session["transcript"]
     harness = session.get("harness", "claude-code")
-    if not os.path.exists(transcript):
+    # Calls passed in may have been saved when the run ended; the transcript
+    # is then no longer needed.
+    if calls is None and not os.path.exists(transcript):
         out.append(f"    Transcript is gone: {transcript}")
         out.append("")
         return out

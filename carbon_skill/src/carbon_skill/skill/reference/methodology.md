@@ -35,7 +35,7 @@ bear on the question; never quote the mean alone as if it were a reading.
    non-linear in output length and Claude Code sessions are wildly
    heterogeneous - 183 separate calculations summed is a different, and
    correct, number compared to one calculation over 185k tokens. Per-request
-   results are retained; `python -m carbon_skill.provider_impacts --json <rundir>` (with the program's Python)
+   results are retained; `python -m carbon_skill.provider_impacts --json <label|@id>` (with the program's Python)
    dumps every one of them with the model, resolution, tokens and latency used.
 3. **The ranges are real uncertainty, not rounding.** When a provider does not
    publish its architecture - the usual case, and Anthropic's - EcoLogits
@@ -101,7 +101,7 @@ to the user rather than quoting the totals bare.
 2. **CPU power is measured only where codecarbon can read a hardware
    counter.** codecarbon picks its CPU method at start-up; `carbon start` prints
    it (`CPU: RAPL (measured)` or `CPU: cpu_load - ESTIMATE, not measured`) and
-   `cpu_method` in the run's `status.json` records it. The report itself does not show it,
+   `cpu_method` on the run's row in the database records it. The report itself does not show it,
    so say it yourself whenever the CPU figure is an estimate. Measured methods
    are `RAPL`, `PowerMetrics`, `Power Gadget` and `Windows EMI`; `cpu_load`
    (utilisation times a table wattage), `TDP constant` and `global constant` are

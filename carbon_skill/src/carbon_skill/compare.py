@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from . import paths, provider_impacts, report, runs, tokens
+from . import paths, provider_impacts, report, runs, tokens, usage
 
 
-def _data(label: str) -> dict:
-    paths.check_label(label)
-    rundir = paths.data_root() / label
-    if not rundir.is_dir():
-        raise paths.Failure(f"No run named '{label}'. See: carbon list")
-    f = report.figures(rundir)
+def _data(ref: str) -> dict:
+    run = runs.find(ref)
+    f = report.figures(run["id"])
     if f is None:
-        raise paths.Failure(f"Run '{label}' has no measurement yet.")
-    st = runs.status(rundir)
+        raise paths.Failure(f"Run {runs.name(run)} has no measurement yet.")
     d = {
         "Duration (s)": f["duration"],
         "Energy (Wh)": f["energy"] * 1000,
@@ -21,15 +17,10 @@ def _data(label: str) -> dict:
         "  GPU (Wh)": f["gpu_energy"] * 1000,
         "  RAM (Wh)": f["ram_energy"] * 1000,
         "CO2e (g)": f["emissions"] * 1000,
-        "_cpu_method": st.get("cpu_method", "unknown"),
-        "_live": runs.is_live(rundir),
+        "_cpu_method": run.get("cpu_method") or "unknown",
+        "_live": runs.is_live(run),
     }
-    calls = None
-    if st.get("started_at"):
-        try:
-            calls = tokens.load(st["started_at"], st.get("ended_at"), runs.session(rundir))
-        except Exception:
-            calls = None
+    calls, ests = usage.for_report(run)
     if calls:
         t = tokens.summary(calls)
         d.update({
@@ -40,7 +31,7 @@ def _data(label: str) -> dict:
             "Average context": t["average_context"],
         })
         try:
-            p = provider_impacts.summary(calls)
+            p = provider_impacts.summary(calls, ests)
         except Exception:
             p = None
         if p:

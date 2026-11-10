@@ -16,28 +16,30 @@ is ever added to them.
 from __future__ import annotations
 
 
-def usage_sections(rundir) -> list[str]:
+def usage_sections(run: dict | None) -> list[str]:
     """Both sections for this run, or nothing if they cannot be determined.
+
+    A finished run uses the calls and estimates saved when it ended; a live
+    run, or one whose usage was not saved, reads the transcript as it is now.
 
     Failure is always silent-and-empty rather than fatal: a report that lost its
     token section is still a valid energy report, and an EcoLogits failure must
     never take the token counts down with it.
     """
-    if not rundir:
+    if not run:
         return []
-    from . import runs, tokens
+    from . import tokens, usage
 
-    st = runs.status(rundir)
-    started = st.get("started_at")
+    started = run.get("started_at")
     if not started:
         return []
-    ended = st.get("ended_at")
-    session = runs.session(rundir)
+    ended = run.get("ended_at")
+    session = run.get("session")
 
     try:
-        calls = tokens.load(started, ended, session)
+        calls, ests = usage.for_report(run)
     except Exception:
-        calls = None
+        calls, ests = None, None
 
     try:
         out = tokens.render(started, ended, session, calls)
@@ -50,7 +52,7 @@ def usage_sections(rundir) -> list[str]:
         try:
             from . import provider_impacts
 
-            out += provider_impacts.render(calls)
+            out += provider_impacts.render(calls, ests)
         except Exception:
             pass
     return out

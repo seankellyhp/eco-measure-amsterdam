@@ -1,0 +1,83 @@
+CodeCarbon report - 'golden'
+  samples: 6   run_id: cc-run-42
+
+  Compute time      0:01:00  (60 s)
+  Energy            0.870 Wh   (0.000870 kWh)
+  Emissions         0.331 g CO2e   (0.000331 kg)
+  Emissions rate    19.836 g CO2e/h
+
+  Breakdown           energy        share     last sampled power
+    CPU               0.240 Wh    27.6%      19.25 W
+    GPU               0.300 Wh    34.5%      10.50 W
+    RAM               0.330 Wh    37.9%      20.00 W
+
+  Hardware
+    CPU           13th Gen Intel(R) Core(TM) i7-13700K  (24 threads)
+    GPU           1 x NVIDIA GeForce RTX 3090 Ti  (1)
+    RAM           62.6 GB
+
+  Tokens (exact, billed counts - this session only)
+    Session       claude-code  sess-golden
+
+    API calls                  8   (1 in subagents)
+    Sent                 162,467
+    Received               5,977
+    Total                168,444
+    Cache hit %            94.5%
+    Average context       20,308   tokens per call
+
+    By model              calls           sent       received
+      claude-opus-5             4        100,521          4,650
+      claude-opus-4-1-2025      1         26,701            800
+      claude-opus-5-1           1         25,105            300
+      claude-haiku-4-5          1         10,040            150
+      mystery-model             1            100             77
+
+  Provider inference (EcoLogits estimate)
+    Method        EcoLogits 0.11.3, per request   (7 of 8 requests modelled)
+    Grid zone     USA (anthropic)   [each provider's datacenter default]
+    Priced on     5,900 output tokens
+
+    Energy (Wh)
+    total 17.382 / 25.731 / 34.079  (lower / mean / upper)
+      10.718 ┤                   ⢸⡇
+             │                   ⢸⡇
+             │  ⢸⡇               ⢸⡇         ⣤                            ⢀
+             │⢹⣀⣸⣇⣀⣀⣀⣶⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣸⣇⣀⣀⣀⣀⣀⣀⣀⣀⣀⣿⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣸
+           0 └────────────────────────────────────────────────────────────
+              10:01                                                  10:25
+    Each point sums the requests in one 12 s slice of the session
+    (local time), at each request's midpoint; 0 = no requests. The y-axis
+    runs from 0 to the highest point.
+
+    Other impacts, session total       lower        mean       upper
+    CO2e (g)                           7.047      10.257      13.466
+    Water (L)                          0.057       0.097       0.137
+    Primary energy (MJ)                0.173       0.254       0.335
+    ADPe (g Sb eq)                  0.000022    0.000023    0.000024
+
+    By model                  calls      output   energy Wh
+      claude-opus-5               4       4,650      20.799
+        computed as anthropic/claude-opus-5  (exact)
+      claude-opus-5-1             1         300       1.355
+        computed as anthropic/claude-opus-5  (proxy: nearest registered opus)
+      claude-haiku-4-5            1         150       0.016
+        computed as anthropic/claude-haiku-4-5  (exact)
+      claude-opus-4-1-202508      1         800       3.560
+        computed as anthropic/claude-opus-4-5  (proxy: nearest registered opus)
+      mystery-model               1          77           -
+        computed as NOT MODELLED  (no provider)
+
+    1 request(s) and 77 output tokens are NOT in the totals above.
+
+    Scope         Output-token generation at the provider, modelled not
+                  measured. A different scope from CodeCarbon; never add them.
+
+  [Relay the block above verbatim, in a code block, and stop. Do not
+   summarise, reformat, recompute or add assumptions of your own.
+   The CodeCarbon figures are a WHOLE-MACHINE measurement: they attribute
+   energy to no program, so never speculate about what caused the usage.
+   The EcoLogits figures are an ESTIMATE of provider-side inference, over
+   output tokens only. Quote them with their range, name the model they
+   were computed for, and never add them to the CodeCarbon energy.
+   At least one model is a STAND-IN - say so; see the By model table.]
