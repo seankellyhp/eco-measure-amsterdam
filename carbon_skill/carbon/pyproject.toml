@@ -1,0 +1,16 @@
+# The carbon skill's own environment. install.sh runs `uv sync --frozen` here,
+# which creates .venv/ next to this file with exactly the versions in uv.lock.
+# It is separate from the workshop environment one level up, and pinned to the
+# same codecarbon and ecologits releases so the skill and the notebooks agree.
+[project]
+name = "carbon-skill"
+version = "0.2.0"
+description = "Claude Code skill: energy, emissions and token accounting with CodeCarbon and EcoLogits"
+requires-python = ">=3.12"
+dependencies = [
+    "codecarbon==3.3.2",
+    "ecologits==0.11.3",
+]
+
+[tool.uv]
+package = false

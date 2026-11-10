@@ -187,34 +187,17 @@ key. Never paste the key into a cell.
   OPENROUTER_API_KEY=sk-or-...
   ```
 
-The work happens in the provider's data center, where CodeCarbon cannot see
-it. EcoLogits **estimates** it instead, from the model and the number of
-tokens it generated. It needs three things about a request: the model, the
-number of tokens it generated, and how long it took. Time the request
-yourself; the other two are in the response. `provider` and `model_name` name
-the model as EcoLogits knows it, which is by its maker and without
-OpenRouter's `openai/` prefix.
+The code below needs an API key, and every request costs money. Check the
+price of the model on OpenRouter before you run it.
 
-The code below needs an API key, and every request costs money. Check the price of the model on
-OpenRouter before you run it.
+### Connect to OpenRouter
 
-Each impact comes as a lower and an upper bound: the provider does not
-publish the size of its models, so EcoLogits brackets it. EcoLogits also
-estimates water, both what cools the data center and what generating its
-electricity consumes. Check `modelled` first: if it is false,
-EcoLogits does not know the model, often because it is newer than the
-installed release, and the impacts are missing.
-
-Unlike CodeCarbon, EcoLogits writes no log file. Save the numbers yourself if
-you want to keep them.
+Load the key, from Colab's secrets or from `.env`, and create a client that
+sends its requests to OpenRouter:
 
 ```{python}
 #| eval: false
-from typing import Literal
-
-from ecologits.tracers.utils import llm_impacts
 from openai import OpenAI
-from pydantic import BaseModel, Field
 
 if "google.colab" in sys.modules:
     from google.colab import userdata
@@ -229,9 +212,21 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["OPENROUTER_API_KEY"],
 )
+```
+
+### Describe the answer
+
+The sentences are numbered so all of them go in a single prompt. The model
+answers with a label for each number, in the structure these two classes
+describe, so the answer arrives as data rather than free text:
+
+```{python}
+#| eval: false
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
-# Number the sentences, so all of them go in a single prompt.
 class Label(BaseModel):
     id: int = Field(description="Number of the sentence")
     sentiment: Literal["positive", "neutral", "negative"]
@@ -239,8 +234,13 @@ class Label(BaseModel):
 
 class Labels(BaseModel):
     labels: list[Label]
+```
 
+`classify()` writes the numbered sentences into one prompt and sends it to
+the model:
 
+```{python}
+#| eval: false
 def classify(sentences):
     prompt = "\n".join(f"{id}. {sentence}" for id, sentence in sentences.select("id", "sentence").iter_rows())
     return client.chat.completions.parse(
@@ -251,14 +251,44 @@ def classify(sentences):
         ],
         response_format=Labels,
     )
+```
 
+### Send the request
 
-# A random sample of 200 sentences keeps the request short and cheap.
+A random sample of 200 sentences keeps the request short and cheap. Time the
+request: EcoLogits needs to know how long it took.
+
+```{python}
+#| eval: false
 pride_sample = pride.sample(n=200, seed=1234)
 
 start = time.perf_counter()
 response = classify(pride_sample)
 latency = time.perf_counter() - start
+```
+
+The labels are in the response. Put them in a data frame, one row per
+sentence:
+
+```{python}
+#| eval: false
+llm_labels = pl.DataFrame([label.model_dump() for label in response.choices[0].message.parsed.labels])
+
+llm_labels
+```
+
+### Estimate the impacts
+
+The work happens in the provider's data center, where CodeCarbon cannot see
+it. EcoLogits **estimates** it instead. It needs three things about a
+request: the model, the number of tokens it generated, and how long it took.
+You timed the request yourself; the other two are in the response.
+`provider` and `model_name` name the model as EcoLogits knows it, which is by
+its maker and without OpenRouter's `openai/` prefix.
+
+```{python}
+#| eval: false
+from ecologits.tracers.utils import llm_impacts
 
 impacts = llm_impacts(
     provider="openai",
@@ -266,9 +296,17 @@ impacts = llm_impacts(
     output_token_count=response.usage.completion_tokens,
     request_latency=latency,
 )
+```
 
-llm_labels = pl.DataFrame([label.model_dump() for label in response.choices[0].message.parsed.labels])
+Each impact comes as a lower and an upper bound: the provider does not
+publish the size of its models, so EcoLogits brackets it. EcoLogits also
+estimates water, both what cools the data center and what generating its
+electricity consumes. Check `modelled` first: if it is false,
+EcoLogits does not know the model, often because it is newer than the
+installed release, and the impacts are missing.
 
+```{python}
+#| eval: false
 pl.DataFrame(
     {
         "label": ["LLM sentiment"],
@@ -284,6 +322,9 @@ pl.DataFrame(
     }
 )
 ```
+
+Unlike CodeCarbon, EcoLogits writes no log file. Save the numbers yourself if
+you want to keep them.
 
 ## Technical Details
 

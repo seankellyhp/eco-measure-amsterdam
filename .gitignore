@@ -6,3 +6,7 @@ codecarbon_results/
 
 /.quarto/
 **/*.quarto_ipynb
+
+# carbon skill: measurements and caches never belong in the repo
+carbon_skill/carbon/runs/
+__pycache__/

@@ -80,6 +80,22 @@ named `OPENROUTER_API_KEY` (key icon in the left sidebar). Locally, put it in a
 OPENROUTER_API_KEY=sk-or-...
 ```
 
+## Optional: measure your AI agent with `/carbon`
+
+[carbon_skill/](carbon_skill/) is a skill for
+[Claude Code](https://claude.com/claude-code) that applies the same tools to
+an agent's own work: what the computer used while the agent worked (CodeCarbon),
+how many tokens the session used, and an estimate of what generating them cost
+in the provider's datacenter (EcoLogits). Linux and macOS (Windows: inside WSL).
+After cloning the repository:
+
+```bash
+bash carbon_skill/install.sh
+```
+
+Or ask Claude Code to "install the carbon skill by following
+carbon_skill/README.md". See [carbon_skill/README.md](carbon_skill/README.md).
+
 ## Files
 
 | File | |
@@ -87,6 +103,7 @@ OPENROUTER_API_KEY=sk-or-...
 | [notebooks/](notebooks/) | The three notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`). |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
 | [figures/](figures/) | Images used in the notebooks. |
+| [carbon_skill/](carbon_skill/) | The optional `/carbon` skill for Claude Code, and its installer. |
 
 The notebooks are generated from the Quarto sources. After editing a `.qmd`
 file, rebuild the notebooks with
