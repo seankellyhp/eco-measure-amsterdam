@@ -340,6 +340,26 @@ def load(started_at: str, ended_at: str | None, session: dict | None) -> list[Ca
     return collect(transcript, session.get("harness", "claude-code"), *span).calls
 
 
+def summary(calls: list[Call]) -> dict:
+    """The session's token totals as data; `render` and `carbon compare` share it."""
+    fresh = sum(c.fresh for c in calls)
+    cread = sum(c.cache_read for c in calls)
+    cwrite = sum(c.cache_write for c in calls)
+    sent = fresh + cread + cwrite
+    return {
+        "calls": len(calls),
+        "subagent_calls": sum(1 for c in calls if c.sidechain),
+        "fresh": fresh,
+        "cache_read": cread,
+        "cache_write": cwrite,
+        "sent": sent,
+        "received": sum(c.output for c in calls),
+        "thinking": sum(c.thinking for c in calls),
+        "cache_hit_pct": cread / sent * 100 if sent > 0 else None,
+        "average_context": sum(c.context for c in calls) // len(calls) if calls else 0,
+    }
+
+
 def render(
     started_at: str,
     ended_at: str | None,
@@ -385,25 +405,20 @@ def render(
         out.append("")
         return out
 
-    fresh = sum(c.fresh for c in calls)
-    cread = sum(c.cache_read for c in calls)
-    cwrite = sum(c.cache_write for c in calls)
-    output = sum(c.output for c in calls)
-    thinking = sum(c.thinking for c in calls)
-    side = sum(1 for c in calls if c.sidechain)
-    sent = fresh + cread + cwrite
-    contexts = [c.context for c in calls]
+    t = summary(calls)
+    side = t["subagent_calls"]
+    sent = t["sent"]
 
     def pct(part: int, whole: int) -> str:
         return f"{part / whole * 100:.1f}%" if whole > 0 else "-"
 
     out.append("")
-    out.append(f"    API calls       {len(calls):>12,d}" + (f"   ({side} in subagents)" if side else ""))
+    out.append(f"    API calls       {t['calls']:>12,d}" + (f"   ({side} in subagents)" if side else ""))
     out.append(f"    Sent            {sent:>12,d}")
-    out.append(f"    Received        {output:>12,d}")
-    out.append(f"    Total           {sent + output:>12,d}")
-    out.append(f"    Cache hit %     {pct(cread, sent):>12}")
-    out.append(f"    Average context {sum(contexts) // len(contexts):>12,d}   tokens per call")
+    out.append(f"    Received        {t['received']:>12,d}")
+    out.append(f"    Total           {sent + t['received']:>12,d}")
+    out.append(f"    Cache hit %     {pct(t['cache_read'], sent):>12}")
+    out.append(f"    Average context {t['average_context']:>12,d}   tokens per call")
 
     models: dict[str, list[int]] = {}
     for c in calls:

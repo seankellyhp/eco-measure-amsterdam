@@ -1,4 +1,4 @@
-"""Which electricity grid this machine is on - decided once, at carbon_start.
+"""Which electricity grid this machine is on - decided once, at carbon start.
 
 Same method as codecarbon's online mode (codecarbon.external.geography,
 GeoMetadata.from_geo_js): look the public IP up at get.geojs.io, and at
@@ -17,18 +17,17 @@ CARBON_COUNTRY (ISO-3) skips the lookup entirely - no network request is made.
 CARBON_REGION optionally adds a region (used by codecarbon for USA, CAN, CHN
 and the Nordic countries).
 
-Prints one tab-separated line:  <ISO3> <TAB> <region or -> <TAB> <description>
+`resolve()` returns (ISO3, region or "", description).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 from datetime import date
 from pathlib import Path
 
-TIMEOUT = float(os.environ.get("CARBON_GEO_TIMEOUT", "4"))
+TIMEOUT = float(os.environ.get("CARBON_GEO_TIMEOUT") or "4")
 PRIMARY = "https://get.geojs.io/v1/ip/geo.json"  # codecarbon's geo_js_url
 BACKUP = "https://ipinfo.io/json"  # codecarbon's backup
 FALLBACK = "NLD"
@@ -52,14 +51,12 @@ def _from_ipinfo() -> tuple[str, str, str]:
     return c.alpha_3, (r.get("region") or "").lower(), c.name
 
 
-def main() -> None:
-    cache = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-
+def resolve(cache: Path | None = None) -> tuple[str, str, str]:
+    """(ISO-3 country, region or '', description of how it was chosen)."""
     explicit = os.environ.get("CARBON_COUNTRY", "").strip().upper()
     if explicit:
         region = os.environ.get("CARBON_REGION", "").strip().lower()
-        print(f"{explicit}\t{region or '-'}\tset by CARBON_COUNTRY")
-        return
+        return explicit, region, "set by CARBON_COUNTRY"
 
     for name, fn in (("get.geojs.io", _from_geojs), ("ipinfo.io", _from_ipinfo)):
         try:
@@ -76,22 +73,16 @@ def main() -> None:
             except OSError:
                 pass
         where = f"{country}, {region}" if region else country
-        print(f"{iso}\t{region or '-'}\t{where} - detected from your IP address via {name}")
-        return
+        return iso, region, f"{where} - detected from your IP address via {name}"
 
     if cache and cache.is_file():
         try:
             d = json.loads(cache.read_text())
-            print(f"{d['country']}\t{d.get('region') or '-'}\t"
-                  f"LOCATION LOOKUP FAILED - using the last detected location "
-                  f"({d.get('name') or d['country']}, {d.get('date')}); set CARBON_COUNTRY to override")
-            return
+            return (d["country"], d.get("region") or "",
+                    f"LOCATION LOOKUP FAILED - using the last detected location "
+                    f"({d.get('name') or d['country']}, {d.get('date')}); set CARBON_COUNTRY to override")
         except (OSError, ValueError, KeyError):
             pass
 
-    print(f"{FALLBACK}\t-\tLOCATION LOOKUP FAILED - assuming {FALLBACK}; "
-          f"set CARBON_COUNTRY to your country's ISO-3 code")
-
-
-if __name__ == "__main__":
-    main()
+    return (FALLBACK, "", f"LOCATION LOOKUP FAILED - assuming {FALLBACK}; "
+            f"set CARBON_COUNTRY to your country's ISO-3 code")

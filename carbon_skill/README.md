@@ -1,47 +1,70 @@
-# `/carbon`: a Claude Code skill for measuring an agent's footprint
+# `/carbon`: measure, then reduce, the footprint of AI-assisted coding
 
-The workshop notebooks measure Python programs. This skill measures **the work
-your AI agent does**. Ask Claude Code to "start carbon tracking", do some
-work, then ask it to "stop carbon tracking", and you get a report with
-three separate parts:
+The workshop notebooks measure Python programs. This tool measures **the work
+your AI agent does**. Ask your agent to "start carbon tracking", do some work,
+then ask it to "stop carbon tracking", and you get a report with three
+separate parts:
 
 | Block | Scope | How |
 |---|---|---|
 | **CodeCarbon** | this computer (CPU, GPU, RAM), while tracking ran | measured with [CodeCarbon](https://codecarbon.io) |
-| **Tokens** | the tokens this Claude Code session sent and received | exact counts from the session log, as billed |
+| **Tokens** | the tokens this agent session sent and received | exact counts from the session log, as billed |
 | **Provider inference** | the energy, CO2e and water of generating those tokens in the provider's datacenter | estimated with [EcoLogits](https://ecologits.ai), as a range |
 
 The three blocks answer different questions and are never added together.
+`carbon compare` then puts two runs side by side, so you can test whether a
+change (a smaller model, a cleaner context) actually reduced anything.
 
-It works on **Linux and macOS**. On Windows, use it inside
-[WSL](https://learn.microsoft.com/windows/wsl/install).
+It runs on **Linux, macOS and Windows** (native, no WSL), in **Claude Code**
+and **Codex CLI**. It is one Python program (`carbon`) plus a skill file that
+tells your agent how to use it.
 
 ---
 
 ## Install
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/), the same
-tool the workshop notebooks use:
+tool the workshop notebooks use. `uv tool install` puts a program in its own
+private environment and its commands on your PATH, on every OS.
+
+**A. From a clone (the workshop route)**
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh     # only if `uv --version` fails
-```
-
-Then, from the cloned workshop repository:
-
-```bash
-git clone https://github.com/seankellyhp/eco-measure-amsterdam   # if you have not already
+git clone https://github.com/seankellyhp/eco-measure-amsterdam
 cd eco-measure-amsterdam
-bash carbon_skill/install.sh
+uv tool install ./carbon_skill
+carbon install-skill
+carbon doctor
 ```
 
-It takes about a minute: it downloads codecarbon and ecologits (and Python 3.12
-if you don't have it), then runs a 15-second test measurement. Afterwards,
-start Claude Code (or restart it if it was already open) and type `/carbon`.
+**B. Straight from GitHub**
+
+```bash
+uv tool install "git+https://github.com/seankellyhp/eco-measure-amsterdam#subdirectory=carbon_skill"
+carbon install-skill
+```
+
+**C. From a clone, nothing installed on PATH**
+
+```bash
+uv run --project carbon_skill carbon install-skill
+uv run --project carbon_skill carbon start
+```
+
+With C, the skill records the full `uv run --project "<path>" carbon` command,
+so your agent can still call it.
+
+`carbon install-skill` installs the skill for every agent it finds
+(`~/.claude` for Claude Code, `~/.codex` for Codex); pick one with
+`--agent claude-code` or `--agent codex`. Then restart your agent and type
+`/carbon` (Claude Code) or ask for "carbon tracking" (Codex).
+
+`carbon doctor` checks everything and runs a 12-second test measurement. Every
+line should say `ok`; any `PROBLEM` line says what to do.
 
 ### Or let your agent install it
 
-Open Claude Code in the `eco-measure-amsterdam` folder and paste:
+Open your agent in the `eco-measure-amsterdam` folder and paste:
 
 > Install the carbon skill by following carbon_skill/README.md.
 
@@ -50,57 +73,72 @@ Open Claude Code in the `eco-measure-amsterdam` folder and paste:
 If you are an AI agent asked to install this skill, do exactly this:
 
 1. Check that `uv --version` works. If it does not, stop and ask the user to
-   install uv (command above). Do not install it without asking.
-2. From the repository root, run `bash carbon_skill/install.sh`. It takes
-   about a minute; allow at least 5 minutes before timing out.
-3. Show the user the installer's output, including the test measurement
-   report, verbatim.
-4. If the installer printed a `NOTE: CPU power is an ESTIMATE` block, tell the
-   user, and show them the commands it printed. **Do not run any `sudo`
-   command yourself.** Enabling CPU measurement is the user's decision (see
-   "Measuring CPU power" below).
-5. If the installer says the skill already exists and was not installed by
-   it, stop and ask the user before re-running it with `--force`.
-6. If it fails, show the error. Do not work around it by copying the folder by
-   hand or by running `pip install`: the skill needs the environment the
-   installer builds.
-7. Tell the user to restart Claude Code if `/carbon` is not available yet.
+   install uv. Do not install it without asking.
+2. From the repository root, run `uv tool install ./carbon_skill`, then
+   `carbon install-skill`, then `carbon doctor`. Allow 5 minutes for the first.
+   If `carbon` is not found, use `uv run --project carbon_skill carbon ...`
+   for the last two instead.
+3. Show the user the output of `carbon doctor` verbatim.
+4. If `uv tool install` refuses because `carbon_start` already exists, the old
+   bash version is installed: see "Upgrading from the bash version" below and
+   ask the user before deleting anything.
+5. If `install-skill` says a carbon skill exists that it did not install, stop
+   and ask the user before re-running with `--force`.
+6. Never run a `sudo` command, and never `pip install` anything.
+7. Tell the user to restart their agent if `/carbon` is not available yet.
 
 ---
 
 ## Use
 
-In Claude Code, in plain language:
+In your agent, in plain language:
 
 - "start carbon tracking" (or `/carbon start`)
 - "how much energy so far?" (a live report)
 - "stop carbon tracking and show me the report"
+- "compare the last two runs"
 
 Or in a terminal:
 
 ```bash
-carbon_start  [label]   # start tracking (default label: "default"); returns at once
-carbon_end    [label]   # stop, then print the report
-carbon_report [label]   # report for a past or running measurement
+carbon start  [label]          # start tracking (default label: "default"); returns at once
+carbon end    [label]          # stop, then print the report
+carbon report [label]          # report for a past or running measurement
+carbon compare A B             # B against A, with changes
+carbon compare --baseline I T  # T with idle run I subtracted
+carbon list                    # all runs, newest first
 ```
 
-Each label is a separate measurement, so you can compare runs:
+`carbon_start`, `carbon_end` and `carbon_report` also work, as aliases.
+Without a label, `end` and `report` use the run you started last.
+
+Tracking stops automatically when the agent session that started it ends, so
+a forgotten measurement never keeps running.
+
+### Reducing the footprint
+
+The measurement is of the whole computer, so measure an idle baseline first,
+then the task, and subtract:
 
 ```bash
-carbon_start idle      # touch nothing for ~60 s: the baseline
-carbon_end   idle
-carbon_start task      # now let the agent do the task
-carbon_end   task
+carbon start idle      # touch nothing for ~60 s
+carbon end   idle
+carbon start task-a    # let the agent do the task
+carbon end   task-a
+carbon compare --baseline idle task-a
 ```
 
-Tracking stops automatically when the Claude Code session that started it
-ends, so a forgotten measurement never keeps running.
+Then change one thing (a smaller model, clearing context between tasks,
+narrower file reads), run the same task as `task-b`, and
+`carbon compare task-a task-b`. The skill suggests what to try based on the
+report; `carbon compare` decides whether it helped. One pair of runs can be
+noise: repeat before concluding.
 
 ---
 
 ## Measuring CPU power
 
-The first lines of `carbon_start` show whether the CPU is **measured** or
+The first lines of `carbon start` show whether the CPU is **measured** or
 **estimated**:
 
 ```
@@ -116,7 +154,7 @@ lets root read them, as a fix for a security issue
 ([CVE-2020-8694](https://nvd.nist.gov/vuln/detail/CVE-2020-8694)). Without them
 CodeCarbon estimates the CPU's power from its load. CodeCarbon's own tests put
 that estimate at roughly 60% too low to 190% too high. When this happens,
-`carbon_start` prints CodeCarbon's
+`carbon start` prints CodeCarbon's
 [recommended fix](https://docs.codecarbon.io/latest/how-to/enable-rapl/). You
 have two options:
 
@@ -148,22 +186,42 @@ read Apple Silicon energy without admin rights, so there is nothing to enable.
 On a Mac, CPU figures are always estimates and the GPU is not tracked
 separately.
 
+**Windows.** CodeCarbon measures CPU energy through the Windows Energy Meter
+Interface on Windows 11 running on real hardware (not a virtual machine), or
+through Intel Power Gadget if it is installed. Otherwise it estimates from CPU
+load, and `carbon start` says so.
+
 **GPU.** An NVIDIA or AMD GPU is measured. An idle GPU still draws power,
 though, and that power counts towards the total.
 
 ---
 
+
+### Measured or estimated, per OS
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| CPU | measured (RAPL) if readable, else estimate | estimate | measured (Windows EMI, Power Gadget) if available, else estimate |
+| GPU (NVIDIA, AMD) | measured | not tracked separately | measured |
+| RAM | estimate | estimate | estimate |
+| Tokens | exact | exact | exact |
+| Provider inference | estimate | estimate | estimate |
+
+---
+
 ## Settings
 
-Set these before `carbon_start`, for example `CARBON_COUNTRY=DEU carbon_start`:
+Set these before `carbon start`:
 
 | Variable | Default | |
 |---|---|---|
 | `CARBON_COUNTRY` | detected | Country whose electricity grid sets this computer's CO2 per kWh, as an ISO-3 code (`NLD`, `DEU`, `GBR`, `USA`...). Set it to skip the location lookup. |
 | `CARBON_REGION` | detected | Region within the country. CodeCarbon uses it for the USA, Canada, China and the Nordic countries (e.g. `california`). |
-| `CARBON_MEASURE_SECS` | `10` | Seconds between power readings. |
+| `CARBON_MEASURE_SECS` | `10` | Seconds between power readings, and between saved rows. |
+| `CARBON_RUN_ROOT` | user data folder | Where measurements are stored. |
 | `CARBON_ECOLOGITS_ZONE` | provider's own | Grid zone for the provider-side estimate, if you know where it was served. |
 | `CARBON_SESSION_TRANSCRIPT` | detected | Path to the session log to count tokens from, if detection fails. |
+| `CARBON_PARENT_PID` | detected | Tie the run to this process instead of the detected agent. |
 
 ---
 
@@ -173,7 +231,7 @@ Emissions are energy times the CO2 per kWh of your electricity grid, so the
 skill needs to know where you are. Like CodeCarbon, it looks up your public IP
 address at [get.geojs.io](https://www.geojs.io), or
 [ipinfo.io](https://ipinfo.io) if that fails, once each time tracking starts.
-`carbon_start` shows the result:
+`carbon start` shows the result:
 
 ```
 Grid: NLD / north holland - Netherlands, north holland - detected from your IP address via get.geojs.io
@@ -186,7 +244,9 @@ detected one, and says so. On a VPN, the detected country is the VPN's. In
 either case, set your country yourself:
 
 ```bash
-CARBON_COUNTRY=DEU carbon_start
+CARBON_COUNTRY=DEU carbon start          # bash, zsh
+env CARBON_COUNTRY=DEU carbon start      # fish
+$env:CARBON_COUNTRY="DEU"; carbon start  # PowerShell
 ```
 
 ## What leaves your computer
@@ -194,31 +254,45 @@ CARBON_COUNTRY=DEU carbon_start
 Only the location lookup above, which sends your IP address to get.geojs.io
 (or ipinfo.io), as CodeCarbon itself does. Setting `CARBON_COUNTRY` turns it
 off. Measuring is offline, and nothing is sent to codecarbon.io. Token counts come from the session log that
-Claude Code already keeps on your disk (`~/.claude/projects/`). The skill uses
+your agent already keeps on your disk (`~/.claude/projects/` for Claude Code). The skill uses
 only the usage numbers and timestamps in it, not what was said.
 
 ---
+
+
+---
+
+## Where things are
+
+| What | Where |
+|---|---|
+| the program | uv's tool folder (`uv tool dir`), with `carbon` on your PATH |
+| the skill | `~/.claude/skills/carbon/` (Claude Code, respects `CLAUDE_CONFIG_DIR`), `~/.agents/skills/carbon/` (Codex) |
+| your measurements | `~/.local/share/carbon-skill/runs/` (Linux), `~/Library/Application Support/carbon-skill/runs/` (macOS), `%LOCALAPPDATA%\carbon-skill\carbon-skill\runs\` (Windows) |
+
+Measurements live outside the skill folder, so reinstalling or uninstalling
+the skill keeps them.
 
 ## Update and uninstall
 
 ```bash
 git pull
-bash carbon_skill/install.sh              # updates in place, keeps your past runs
-bash carbon_skill/install.sh --uninstall  # removes the skill and its commands
+uv tool install --reinstall ./carbon_skill
+carbon install-skill
+
+carbon install-skill --remove     # removes the skill folders (keeps your measurements)
+uv tool uninstall carbon-skill    # removes the program
 ```
 
-Other options: `--dest DIR` (install somewhere other than
-`~/.claude/skills/carbon`), `--bin-dir DIR` (put the commands somewhere other
-than `~/.local/bin`), `--no-check` (skip the test measurement), and `--force`
-(replace a carbon skill this installer did not create; the old one is moved
-to a backup, not deleted). These are the defaults the installer uses:
+### Upgrading from the bash version
 
-| What | Where |
-|---|---|
-| the skill | `~/.claude/skills/carbon/` (respects `CLAUDE_CONFIG_DIR`) |
-| its Python environment | `~/.claude/skills/carbon/.venv/` |
-| your measurements | `~/.claude/skills/carbon/runs/<label>/` |
-| the commands | `~/.local/bin/carbon_start`, `carbon_end`, `carbon_report` |
+`uv tool install` refuses to overwrite the old `~/.local/bin/carbon_start`,
+`carbon_end` and `carbon_report` wrappers. Delete those three files first (or
+pass `--force` to `uv tool install`). Then `carbon install-skill` replaces the
+old skill folder and moves its past runs to the new measurements folder. If
+the old install predates the installer's marker file, `install-skill` refuses
+to touch it; `carbon install-skill --force` moves it to
+`~/.claude/carbon-skill-backup-<time>/` (your old runs stay there, in `runs/`).
 
 ---
 
@@ -226,13 +300,12 @@ to a backup, not deleted). These are the defaults the installer uses:
 
 | Symptom | Fix |
 |---|---|
-| `uv is required but not on PATH` | Install uv (see above), open a new terminal, and run the installer again. |
-| `carbon_start: command not found` | `~/.local/bin` is not on your PATH. The agent still works (it calls the scripts directly). To fix it for your terminal, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` or `~/.bashrc`, or run `fish_add_path ~/.local/bin` in fish. |
-| `/carbon` does not appear in Claude Code | Restart Claude Code. Skills are loaded when a session starts. |
-| `The carbon skill is not installed` | The folder was copied by hand. Run `bash carbon_skill/install.sh`. |
-| `REFUSED: do not run the codecarbon CLI directly` | This is intended: `codecarbon monitor` would block the agent. Use `carbon_start`. |
-| `Tokens: session NOT identified` | Energy is still measured. To count tokens, set `CARBON_SESSION_TRANSCRIPT` to the session's `.jsonl` file before `carbon_start`. |
-| Anything else | Look in `~/.claude/skills/carbon/runs/<label>/monitor.log`, then run the installer again. It is safe to re-run. |
+| `carbon: command not found` | Run `uv tool update-shell`, then open a new terminal. Or use route C. |
+| `/carbon` does not appear in your agent | Restart the agent. Skills are loaded when a session starts. Run `carbon doctor`. |
+| `Monitor failed to start` | The lines printed after it come from CodeCarbon's log; `carbon doctor` repeats the test. |
+| `Tokens: session NOT identified` | Energy is still measured. To count tokens, set `CARBON_SESSION_TRANSCRIPT` to the session's `.jsonl` file before `carbon start`. |
+| A run says `stopped by: monitor died` | The monitor was killed (sleep, reboot, task manager). Figures are those of the last saved row, at most one interval old. |
+| Anything else | Look in the run's `monitor.log` (`carbon start` prints the run folder), then run `carbon doctor`. |
 
 ---
 
@@ -240,11 +313,12 @@ to a backup, not deleted). These are the defaults the installer uses:
 
 ```
 carbon_skill/
-  README.md       this file
-  install.sh      the installer
-  carbon/         the skill itself, copied to ~/.claude/skills/carbon
-    SKILL.md        instructions Claude reads when the skill is used
-    pyproject.toml  dependencies (codecarbon, ecologits) ...
-    uv.lock         ... pinned to the versions the workshop notebooks use
-    scripts/        carbon_start/end/report and the report code
+  README.md            this file
+  pyproject.toml       the program and its pinned dependencies (codecarbon, ecologits)
+  uv.lock
+  src/carbon_skill/    the program
+    skill/             SKILL.md and reference/, installed by `carbon install-skill`
+  tests/               uv run --project carbon_skill pytest carbon_skill/tests
+  NOTES.md             what was verified, and how
+  workshop_mvp.md      the implementation plan
 ```

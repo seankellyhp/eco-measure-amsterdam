@@ -15,19 +15,8 @@ is ever added to them.
 
 from __future__ import annotations
 
-import json
-import os
 
-
-def read(rundir: str, name: str) -> str | None:
-    try:
-        with open(os.path.join(rundir, name)) as fh:
-            return fh.read().strip() or None
-    except OSError:
-        return None
-
-
-def usage_sections(rundir: str | None) -> list[str]:
+def usage_sections(rundir) -> list[str]:
     """Both sections for this run, or nothing if they cannot be determined.
 
     Failure is always silent-and-empty rather than fatal: a report that lost its
@@ -36,20 +25,14 @@ def usage_sections(rundir: str | None) -> list[str]:
     """
     if not rundir:
         return []
-    try:
-        import tokens
-    except ImportError:
-        return []
+    from . import runs, tokens
 
-    started = read(rundir, "started_at")
+    st = runs.status(rundir)
+    started = st.get("started_at")
     if not started:
         return []
-    ended = read(rundir, "ended_at")
-    raw = read(rundir, "session.json")
-    try:
-        session = json.loads(raw) if raw else None
-    except ValueError:
-        session = None
+    ended = st.get("ended_at")
+    session = runs.session(rundir)
 
     try:
         calls = tokens.load(started, ended, session)
@@ -65,7 +48,7 @@ def usage_sections(rundir: str | None) -> list[str]:
 
     if calls:
         try:
-            import provider_impacts
+            from . import provider_impacts
 
             out += provider_impacts.render(calls)
         except Exception:

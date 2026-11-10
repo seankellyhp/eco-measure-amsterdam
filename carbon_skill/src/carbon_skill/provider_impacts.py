@@ -31,8 +31,8 @@ so one calculation over 185k output tokens is a different number from the sum
 of 183 calculations - and the wrong one. Per-request results are kept and can
 be dumped with `--json`.
 
-    python provider_impacts.py --json <rundir>      per-request results
-    python provider_impacts.py <rundir>             the report section
+    python -m carbon_skill.provider_impacts --json <rundir>   per-request results
+    python -m carbon_skill.provider_impacts <rundir>          the report section
 
 Nothing here is a measurement of any provider's infrastructure, and nothing
 here may be added to the CodeCarbon figures: different scopes, different
@@ -428,7 +428,7 @@ def render(calls) -> list[str]:
         return [
             "  Provider inference (EcoLogits estimate)",
             "    Not computed: the ecologits package is not installed in this skill's venv.",
-            "      Rerun the skill installer: bash carbon_skill/install.sh",
+            "      Reinstall the program: uv tool install --reinstall ./carbon_skill",
             "",
         ]
 
@@ -516,7 +516,7 @@ def main() -> int:
     import json
     import sys
 
-    import tokens
+    from . import runs, tokens
 
     argv = sys.argv[1:]
     as_json = "--json" in argv
@@ -526,20 +526,12 @@ def main() -> int:
         return 2
     rundir = argv[0]
 
-    def read(name: str) -> str | None:
-        try:
-            with open(os.path.join(rundir, name)) as fh:
-                return fh.read().strip() or None
-        except OSError:
-            return None
-
-    started = read("started_at")
+    st = runs.status(rundir)
+    started = st.get("started_at")
     if not started:
-        print(f"No started_at in {rundir}", file=sys.stderr)
+        print(f"No started_at in {rundir}/status.json", file=sys.stderr)
         return 1
-    raw = read("session.json")
-    session = json.loads(raw) if raw else None
-    calls = tokens.load(started, read("ended_at"), session)
+    calls = tokens.load(started, st.get("ended_at"), runs.session(rundir))
     if calls is None:
         print("Session could not be identified; no usage to estimate from.", file=sys.stderr)
         return 1
@@ -571,6 +563,29 @@ def main() -> int:
 
     print("\n".join(render(calls)))
     return 0
+
+
+def summary(calls) -> dict | None:
+    """Session totals as (low, high) pairs in Wh and g, or None if nothing was modelled."""
+    if not calls or not AVAILABLE:
+        return None
+    agg = total(estimate(calls))
+    if agg.n == 0:
+        return None
+
+    def bounds(value: Any, scale: float) -> tuple[float, float] | None:
+        if value is None:
+            return None
+        if isinstance(value, RangeValue):
+            return value.min * scale, value.max * scale
+        return float(value) * scale, float(value) * scale
+
+    return {
+        "requests_modelled": agg.n,
+        "output_tokens": agg.output,
+        "energy_wh": bounds(agg.energy, 1000),
+        "co2e_g": bounds(agg.gwp, 1000),
+    }
 
 
 def _dump(value: Any) -> Any:
