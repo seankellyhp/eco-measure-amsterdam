@@ -30,9 +30,9 @@ uv 0.9.9, Claude Code, on 2026-11-10.
 
 ## Not done
 
-- **Step 0 spike (Windows detach)**: skipped at the user's request. `CREATE_BREAKAWAY_FROM_JOB` is not used; if the manual checklist on Windows shows the monitor dying with the tool call, add it in `procs.spawn_detached` (with a retry without it on `PermissionError`).
+- **Step 0 spike (Windows detach)**: skipped at the user's request. In CI the detached monitor starts, survives `carbon start` returning and stops on `carbon end` on `windows-latest`; whether it survives an agent's tool call ending is still untested. `CREATE_BREAKAWAY_FROM_JOB` is not used; if the manual checklist on Windows shows the monitor dying with the tool call, add it in `procs.spawn_detached` (with a retry without it on `PermissionError`).
 - **Codex transcript reader (5.12)**: not written. Codex is not installed on this machine and no sample session file was available; the plan forbids writing the reader from the description alone. A Codex session gets energy figures but no Tokens/Provider blocks. Needed: one real `~/.codex/sessions/**/rollout-*.jsonl`.
-- **macOS and Windows**: not run. Only the CI workflow covers them, and it has not been pushed.
+- **macOS and Windows**: run only in CI (run 42796438779, all three OSes green: tests, `uv tool install`, `install-skill`, `doctor` with its measurement). Not run inside a real agent on either. On Windows the three golden-text tests are skipped (they need `time.tzset`), so the report text is not checked there.
 - **Manual checklist (8)**: not run in any agent.
 - **`uv tool install ./carbon_skill` (route A)**: not run on this machine, because the old bash wrappers in `~/.local/bin` would collide (see README); covered by CI.
 - **Tests**: kept minimal at the user's request (labels, token dedup, `split_model`, sweep, install-skill, one slow start/report/end lifecycle test). The rest of section 7 is not written.
@@ -49,7 +49,7 @@ ecologits 0.11.3, on 2026-11-10.
 | No `emissions.csv` (5.4) | The tracker is built with `output_methods=[]` plus `output_handlers=[SqliteOutput]`, not `save_to_file=False`: every `save_to_*` argument now raises a DeprecationWarning, and `output_methods=[]` turns all of them off. The lifecycle test asserts no `.csv` and no `.json` exists anywhere under the data root. |
 | EcoLogits units (4) | `energy` kWh, `gwp` kgCO2eq, `adpe` kgSbeq, `pe` MJ, `wcf` L; columns are named `_kwh`, `_kg`, `_kg`, `_mj`, `_l`. |
 | Other `impacts` fields (4) | `ImpactsOutput` also has `usage` and `embodied` (the same five impacts split by phase), `warnings` and `errors`. The report uses none of them; not stored. |
-| WAL on Windows and macOS (5.1) | **Not verified**: no Windows or macOS machine, and CI has not been pushed. |
+| WAL on Windows and macOS (5.1) | Verified by CI run 42796438779 (commit 8118b0d, 2026-11-10) on `macos-latest` (SQLite 3.54.1) and `windows-latest` (SQLite 3.49.1): the journal mode is `wal`, two connections write without `database is locked`, and the lifecycle test (monitor writing while `report` reads) passes. Local disks only; synced and network folders are still not supported. |
 
 ## Where the code departs from the plan, and why
 
