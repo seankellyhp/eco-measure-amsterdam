@@ -4,8 +4,7 @@
 
 Workshop materials: a tutorial on measuring the energy use and carbon
 emissions of Python programs with [CodeCarbon](https://codecarbon.io) and
-[EcoLogits](https://ecologits.ai). It is the Python counterpart of the
-[TidyCarbon](https://github.com/seankellyhp/Tidycarbon) tutorial for R.
+[EcoLogits](https://ecologits.ai). 
 
 The tutorial is split into three notebooks. Each runs on its own, but they
 are meant to be read in this order:
@@ -15,6 +14,14 @@ are meant to be read in this order:
 | [getting_started.ipynb](notebooks/getting_started.ipynb) | Measure the energy and emissions of an existing Python script, and of each step of a pipeline (an LDA topic model). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting_started.ipynb) |
 | [sentiment_tracking.ipynb](notebooks/sentiment_tracking.ipynb) | Measure dictionary and transformer (DistilBERT) sentiment analysis, and benchmark the Bing dictionary in polars, NLTK's VADER and transformers against each other. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/sentiment_tracking.ipynb) |
 | [llm_tracking.ipynb](notebooks/llm_tracking.ipynb) | Estimate the energy and emissions of sentiment analysis with a hosted language model, with EcoLogits. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/llm_tracking.ipynb) |
+
+An R version of the tutorial is also available, using
+[TidyCarbon](https://github.com/seankellyhp/Tidycarbon). It is a single notebook
+that runs on its own:
+
+| Notebook | | |
+|---|---|---|
+| [tidycarbon_tutorial.ipynb](notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) | Measure the energy and emissions of R programs with tidycarbon: tidytext dictionary sentiment, a tidytext vs. quanteda benchmark, and latent semantic scaling. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) |
 
 ## Option A: Google Colab (nothing to install)
 
@@ -86,10 +93,8 @@ OPENROUTER_API_KEY=sk-or-...
 [Claude Code](https://claude.com/claude-code) that applies the same tools to
 an agent's own work: what the computer used while the agent worked (CodeCarbon),
 how many tokens the session used, and an estimate of what generating them cost
-in the provider's datacenter (EcoLogits). Tested on Linux; written for macOS
-and Windows too, but not yet run there. Codex CLI gets the energy measurement
-only, without token counts.
-After cloning the repository:
+in the provider's datacenter (EcoLogits). Tested on Linux; might work on Windows and Mac. 
+Currently only supports Claude. Submissions welcome. 
 
 ```bash
 uv tool install ./carbon_skill
@@ -104,7 +109,7 @@ carbon_skill/README.md". See [carbon_skill/README.md](carbon_skill/README.md).
 
 | File | |
 |---|---|
-| [notebooks/](notebooks/) | The three notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`). |
+| [notebooks/](notebooks/) | The three Python notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`), and the R notebook in [notebooks/tidycarbon_R/](notebooks/tidycarbon_R/). |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
 | [figures/](figures/) | Images used in the notebooks. |
 | [carbon_skill/](carbon_skill/) | The optional `/carbon` program and skill for Claude Code. |

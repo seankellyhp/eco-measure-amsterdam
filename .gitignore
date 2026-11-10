@@ -9,4 +9,5 @@ codecarbon_results/
 
 # carbon skill: measurements and caches never belong in the repo
 carbon_skill/dist/
+carbon_skill/docs/
 __pycache__/
