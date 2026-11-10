@@ -72,7 +72,9 @@ def import_folder(folder: Path) -> int:
         "state": "stopped",
         "created_at": started or db.now_iso(),
         "started_at": started,
-        "ended_at": st.get("ended_at") or st.get("last_flush_at"),
+        # Never NULL if there is a sample: an open end would count tokens up to now.
+        "ended_at": st.get("ended_at") or st.get("last_flush_at")
+        or (db.sample_from_codecarbon(rows[-1])["ts"] if rows else None),
         "stopped_by": st.get("stopped_by") or "imported",
         "error": st.get("error"),
         "last_flush_at": st.get("last_flush_at"),

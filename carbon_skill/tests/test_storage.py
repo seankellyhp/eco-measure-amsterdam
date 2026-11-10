@@ -62,6 +62,14 @@ def test_newer_database_is_refused():
         db.connect()
 
 
+def test_partial_schema_is_refused():
+    raw = sqlite3.connect(db.path())
+    raw.execute("CREATE TABLE run (id INTEGER PRIMARY KEY)")
+    raw.close()
+    with pytest.raises(paths.Failure, match="only part of carbon's tables"):
+        db.connect()
+
+
 def test_two_connections_write_without_locking():
     run_id = make_run(samples=0)
     errors = []
@@ -227,6 +235,63 @@ def test_outside_any_session_uses_newest(monkeypatch, capsys):
     assert "No agent session detected; using the most recent run 'new'" in capsys.readouterr().err
 
 
+def _real_here(monkeypatch, agent, sess, known_agent):
+    """The real runs.here(), with only what it reads from the machine replaced."""
+    from carbon_skill import procs, tokens
+
+    monkeypatch.setattr(procs, "detect_agent", lambda: agent)
+    monkeypatch.setattr(procs, "under_known_agent", lambda: known_agent)
+    monkeypatch.setattr(tokens, "resolve_session", lambda pid, cwd: sess)
+
+
+PARENT = {"pid": 4242, "create_time": 1.0, "name": "codex", "how": "first non-shell parent"}
+GUESS = {"harness": "claude-code", "transcript": "/t/two.jsonl", "how": "newest transcript in x (INFERRED from cwd)"}
+
+
+def test_agent_without_session_never_takes_another_sessions_run(monkeypatch):
+    """An agent found only by walking the process tree, with no session (Codex):
+    still inside a session, so rule 3 must not hand it someone else's run."""
+    other = make_run("theirs", state="running", sess=S2)
+    _real_here(monkeypatch, PARENT, None, known_agent=True)
+    assert runs.here()[2] is True
+    with pytest.raises(paths.Failure, match="No run was started in this session"):
+        end.command_end(None)
+    assert runs.is_live(other)
+
+
+def test_agent_without_session_finds_its_own_run(monkeypatch):
+    mine = make_run("mine", agent_pid=4242, agent_ctime=1.0)
+    make_run("theirs", sess=S2)
+    _real_here(monkeypatch, PARENT, None, known_agent=True)
+    assert runs.current_run() == (runs.status(mine), "agent")
+
+
+def test_guessed_session_never_selects_a_run(monkeypatch, capsys):
+    """Two sessions in one folder: the cwd guess names the other one's transcript."""
+    mine = make_run("mine", agent_pid=4242, agent_ctime=1.0)
+    other = make_run("theirs", state="running", sess=S2)  # newer, live, and what the guess points at
+    _real_here(monkeypatch, PARENT, GUESS, known_agent=True)
+    assert runs.find(None)["id"] == mine
+
+    db.delete_run(mine)
+    with pytest.raises(paths.Failure, match="No run was started in this session"):
+        end.command_end(None)
+    assert runs.is_live(other)
+
+    end.command_list(session_only=True)
+    assert "No runs in this session" in capsys.readouterr().out
+
+
+def test_plain_terminal_in_a_project_folder_says_so(monkeypatch, capsys):
+    """A terminal whose cwd matches a session's folder is still outside any session."""
+    make_run("theirs", sess=S2)
+    newest = make_run("new")
+    terminal = {"pid": 77, "create_time": 1.0, "name": "gnome-terminal-server", "how": "first non-shell parent"}
+    _real_here(monkeypatch, terminal, GUESS, known_agent=False)
+    assert runs.find(None)["id"] == newest
+    assert "No agent session detected; using the most recent run 'new'" in capsys.readouterr().err
+
+
 # --------------------------------------------------------------------------- #
 # history
 # --------------------------------------------------------------------------- #
@@ -280,6 +345,15 @@ def test_import_new_layout_and_bash_era(tmp_path):
     assert old["started_at"] == "2026-11-10T10:00:00+01:00" and old["stopped_by"] == "carbon end"
     assert old["carbon_version"] == "bash"
 
+    # No recorded end: the last sample's time bounds the token window.
+    open_end = write_run(root, "open-end", None)
+    for name in ("run.json", "status.json"):
+        (open_end / name).unlink()
+    (open_end / "started_at").write_text("2026-11-10T10:00:00+01:00\n")
+    assert legacy.import_all(quiet=True)
+    run = runs.find("open-end")
+    assert run["ended_at"] == db.last_sample(run["id"])[0]["ts"]
+
     # A later import pass finds nothing new.
     assert legacy.import_all(quiet=True) == []
 
@@ -301,6 +375,35 @@ def test_export_sql_loads_into_empty_database(tmp_path):
     assert target.execute("SELECT count(*) FROM sample").fetchone()[0] == 2
     assert target.execute("SELECT label FROM run").fetchone()[0] == "dump"
     target.close()
+
+
+def _restore(monkeypatch, tmp_path, sql):
+    root = tmp_path / "restored"
+    root.mkdir()
+    target = sqlite3.connect(root / "carbon.db")
+    target.executescript(sql)
+    target.close()
+    monkeypatch.setenv("CARBON_RUN_ROOT", str(root))
+
+
+def test_export_sql_restores_a_database_carbon_opens(tmp_path, monkeypatch):
+    run_id = make_run("dump", samples=2)
+    sql = "\n".join(db.dump())
+    _restore(monkeypatch, tmp_path, sql)
+    assert db.health() == (db.VERSION, "ok")
+    assert runs.find("dump")["id"] == run_id and db.last_sample(run_id)[1] == 2
+    assert make_run("after") == run_id + 1  # and it takes new runs
+
+
+def test_dump_without_version_is_adopted(tmp_path, monkeypatch):
+    """A dump written before the version line was added (plain iterdump)."""
+    run_id = make_run("dump")
+    with db.opened() as conn:
+        sql = "\n".join(conn.iterdump())
+    assert "user_version" not in sql
+    _restore(monkeypatch, tmp_path, sql)
+    assert db.health() == (db.VERSION, "ok")
+    assert runs.find("dump")["id"] == run_id
 
 
 def test_cli_export_and_list(tmp_path, capsys):

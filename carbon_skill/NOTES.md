@@ -68,9 +68,22 @@ ecologits 0.11.3, on 2026-11-10.
 - **The sweep saves usage**: every command already calls `runs.sweep()`, so it
   is the "any command that meets a stopped run without saved usage" of 5.5.
 - **"Inside an agent session" (5.3.1)** means a session found by id or open file,
-  or an agent found by `CARBON_PARENT_PID` / `CLAUDE_PID`. A session found only
-  by guessing from the cwd does not count: a plain terminal in a project folder
-  matches one, and rule 3 must still apply there.
+  an agent found by `CARBON_PARENT_PID` / `CLAUDE_PID`, or a known agent
+  (`claude`, `codex`, `pi`: `procs.KNOWN_AGENTS`) among the ancestor processes.
+  The last covers an agent with no identifiable session (Codex today), which
+  would otherwise fall to rule 3 and take another session's run.
+- **A session guessed from the cwd never selects a run** (`runs.exact`): rule 1
+  and `list --session` ignore it. The guess is "newest transcript in this
+  folder", which can be another session's (two sessions in one folder, or a
+  plain terminal in a project folder). Such a run is still found by rule 2, its
+  agent process. Cost: after an agent restart (`--resume`) a run whose session
+  was only guessed is no longer the default; name it by label or `@<id>`.
+- **SQL dump (5.8)**: `iterdump()` leaves out `PRAGMA user_version`, so
+  `carbon export --format sql` appends it; without it a restored file read as
+  new and carbon failed on `CREATE TABLE`. A version-0 file that already has
+  all five tables is adopted (older dumps); one with only some is refused.
+- **Import with no recorded end (5.7)**: `ended_at` falls back to the last
+  sample's time, so the saved token window does not run to the time of import.
 - **Import (5.7)** lives in `legacy.py`. Folders go to `imported/<label>`, or
   `imported/<label>-2` etc. if taken. A folder that imports but cannot be moved
   gets an `.imported` marker so it is never imported twice. `.last` is removed.
@@ -90,4 +103,5 @@ ecologits 0.11.3, on 2026-11-10.
   with its 12 s measurement.
 - Tests: golden text (from the database, and again with the transcript deleted),
   db, `SqliteOutput`, `usage.save`, labels and `@id`, current-session rules,
-  history filters, import, export, and the slow lifecycle test. 41 pass.
+  history filters, import, export (including restoring the SQL dump), and the
+  slow lifecycle test. 48 pass.

@@ -87,7 +87,7 @@ def command_list(session_only: bool = False, label: str | None = None, n: int = 
     sid = agent = None
     if session_only:
         here_agent, sess, _ = runs.here()
-        sid = db.find_session(sess)
+        sid = db.find_session(runs.exact(sess))
         agent = (here_agent["pid"], here_agent.get("create_time"))
     rows = db.list_runs(label=label, session_id=sid, agent=agent, limit=n)
     if not rows:

@@ -16,6 +16,10 @@ SKIP = {
     "uv", "uvx", "python", "python3", "carbon", "carbon_start",
 }
 
+# Process names of the coding agents themselves. An ancestor with one of these
+# names means the command was run by an agent, not typed in a plain terminal.
+KNOWN_AGENTS = {"claude", "codex", "pi"}
+
 
 def _norm(name: str) -> str:
     name = (name or "").lower().lstrip("-")
@@ -86,6 +90,21 @@ def detect_agent() -> dict:
     if last is not None:
         return rec(last.pid, "top of the process tree")
     return rec(os.getppid(), "parent process")
+
+
+def under_known_agent() -> bool:
+    """True if a coding agent is among this process's ancestors."""
+    try:
+        parents = psutil.Process().parents()
+    except psutil.Error:
+        return False
+    for p in parents:
+        try:
+            if _norm(p.name()) in KNOWN_AGENTS:
+                return True
+        except psutil.Error:
+            continue
+    return False
 
 
 def spawn_detached(args: list[str], log: Path, cwd: Path) -> subprocess.Popen:

@@ -17,6 +17,7 @@ from . import paths
 VERSION = 1
 MIN_SQLITE = (3, 37, 0)  # STRICT tables
 LIVE = ("starting", "running")
+TABLES = {"session", "run", "sample", "api_call", "provider_estimate"}
 
 SCHEMA = """
 CREATE TABLE session (
@@ -237,6 +238,17 @@ def _migrate(conn: sqlite3.Connection) -> bool:
         # Re-read under the write lock: another process may have just created it.
         if conn.execute("PRAGMA user_version").fetchone()[0] != 0:
             return False
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if TABLES <= have:
+            # Restored from a SQL dump that did not carry the version (dumps
+            # written before `carbon export` added it): the schema is ours.
+            conn.execute(f"PRAGMA user_version={VERSION}")
+            return False
+        if TABLES & have:
+            raise paths.Failure(
+                f"{path()} holds only part of carbon's tables ({', '.join(sorted(TABLES & have))}), so it is "
+                "not a database this program can use. Move it aside and run the command again."
+            )
         for stmt in SCHEMA.split(";"):
             if stmt.strip():
                 conn.execute(stmt)
@@ -280,8 +292,12 @@ def health() -> tuple[int, str]:
 
 
 def dump() -> Iterator[str]:
+    """The database as SQL text. iterdump() leaves out the schema version, so it
+    is added: a file restored from the dump then opens as a carbon database."""
     with opened() as conn:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
         yield from conn.iterdump()
+    yield f"PRAGMA user_version={version};"
 
 
 # --------------------------------------------------------------------------- #

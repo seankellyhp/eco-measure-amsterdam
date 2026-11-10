@@ -135,8 +135,10 @@ def sweep() -> None:
 def here() -> tuple[dict, dict | None, bool]:
     """(agent process, its session or None, whether we are inside an agent session).
 
-    A session found only by guessing from the cwd does not count as being
-    inside one: a plain terminal in a project folder would match it.
+    Inside means: the session was identified exactly, the agent was named by
+    CARBON_PARENT_PID / CLAUDE_PID, or a known agent is an ancestor process.
+    A session found only by guessing from the cwd does not count: a plain
+    terminal in a project folder would match it.
     """
     from . import tokens
 
@@ -145,10 +147,21 @@ def here() -> tuple[dict, dict | None, bool]:
         sess = tokens.resolve_session(str(agent["pid"]), os.getcwd())
     except Exception:
         sess = None
-    inside = bool(sess and "INFERRED" not in sess.get("how", "")) or agent["how"] in (
-        "CARBON_PARENT_PID", "CLAUDE_PID",
+    inside = (
+        exact(sess) is not None
+        or agent["how"] in ("CARBON_PARENT_PID", "CLAUDE_PID")
+        or procs.under_known_agent()
     )
     return agent, sess, inside
+
+
+def exact(sess: dict | None) -> dict | None:
+    """The session, unless it was only guessed from the cwd. A guess can name
+    another session's transcript (two sessions in one folder, or a plain
+    terminal in a project folder), so it never selects a run."""
+    if sess and "INFERRED" not in (sess.get("how") or ""):
+        return sess
+    return None
 
 
 def current_run() -> tuple[dict | None, str]:
@@ -157,7 +170,7 @@ def current_run() -> tuple[dict | None, str]:
     Returns (None, reason) inside an agent session that started no run.
     """
     agent, sess, inside = here()
-    sid = db.find_session(sess)
+    sid = db.find_session(exact(sess))
     if sid is not None:
         run = db.newest_in_session(sid)
         if run:
