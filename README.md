@@ -119,6 +119,7 @@ carbon_skill/README.md". See [carbon_skill/README.md](carbon_skill/README.md).
 |---|---|
 | [notebooks/](notebooks/) | The three Python notebooks (`.ipynb`, for Colab or Jupyter) and their Quarto sources (`.qmd`), and the R notebook in [notebooks/tidycarbon_R/](notebooks/tidycarbon_R/). |
 | [data/](data/) | Jane Austen's six novels and the Bing sentiment lexicon, exported from the R packages janeaustenr and tidytext by [data/make_data.R](data/make_data.R). |
+| [slides/](slides/) | Copy of the presentation. |
 | [figures/](figures/) | Images used in the notebooks. |
 | [carbon_skill/](carbon_skill/) | The optional `/carbon` program and skill for Claude Code. |
 
