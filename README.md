@@ -1,10 +1,20 @@
-# Measuring the energy and emissions of Python programs
+# Measuring What We Compute: Towards (More) Efficient AI Use
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/getting_started.ipynb)
 
 Workshop materials: a tutorial on measuring the energy use and carbon
-emissions of Python programs with [CodeCarbon](https://codecarbon.io) and
-[EcoLogits](https://ecologits.ai). 
+emissions of programs with [CodeCarbon](https://codecarbon.io) and
+[EcoLogits](https://ecologits.ai) for social science researchers. 
+
+Here are links for resources shared in the presentation. 
+[CLEER Dashboard](https://cleerdash.sustainableaigroup.com/) Sustainability estimates for LLMs.
+[AI Energy Score](https://huggingface.co/spaces/AIEnergyScore/Leaderboard) Standardized energy estimates for specialized and general AI models, by task. 
+[Electricity Maps](https://app.electricitymaps.com/map/fifteen_minutes?signal=carbon-intensity) Real-time electricity grids.
+[OpenRouter](https://openrouter.ai/) Per request access to a variety of LLMs with benchmarks. 
+[Vast AI](https://vast.ai/) On-demand GPU infrastructure with data center locations. 
+[Aleph Alpha Kolibri-1](https://huggingface.co/Aleph-Alpha/Kolibri-1) Detailed open LLM model card with energy and good documentation. 
+
+
 
 The tutorial is split into three notebooks. Each runs on its own, but they
 are meant to be read in this order:
@@ -16,12 +26,11 @@ are meant to be read in this order:
 | [llm_tracking.ipynb](notebooks/llm_tracking.ipynb) | Estimate the energy and emissions of sentiment analysis with a hosted language model, with EcoLogits. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/llm_tracking.ipynb) |
 
 An R version of the tutorial is also available, using
-[TidyCarbon](https://github.com/seankellyhp/Tidycarbon). It is a single notebook
-that runs on its own:
+[TidyCarbon](https://github.com/seankellyhp/Tidycarbon). It has aligned content, but in one jupyter notebook only:
 
 | Notebook | | |
 |---|---|---|
-| [tidycarbon_tutorial.ipynb](notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) | Measure the energy and emissions of R programs with tidycarbon: tidytext dictionary sentiment, a tidytext vs. quanteda benchmark, and latent semantic scaling. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) |
+| [tidycarbon_tutorial.ipynb](notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) | Measure the energy and emissions of R programs with tidycarbon: tidytext dictionary sentiment, a tidytext vs. quanteda benchmark, and LLMs with ellmer. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/seankellyhp/eco-measure-amsterdam/blob/main/notebooks/tidycarbon_R/tidycarbon_tutorial.ipynb) |
 
 ## Option A: Google Colab (nothing to install)
 
@@ -87,7 +96,7 @@ named `OPENROUTER_API_KEY` (key icon in the left sidebar). Locally, put it in a
 OPENROUTER_API_KEY=sk-or-...
 ```
 
-## Optional: measure your AI agent with `/carbon`
+## Optional: I have included an Easter Egg for those using a local coding agent. This is experimental but yours to try out. 
 
 [carbon_skill/](carbon_skill/) is a program plus a skill for
 [Claude Code](https://claude.com/claude-code) that applies the same tools to
