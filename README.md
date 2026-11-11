@@ -8,12 +8,12 @@ emissions of programs with [CodeCarbon](https://codecarbon.io) and
 
 Here are links for resources shared in the presentation. 
 
-[CLEER Dashboard](https://cleerdash.sustainableaigroup.com/) Sustainability estimates for LLMs.\
-[AI Energy Score](https://huggingface.co/spaces/AIEnergyScore/Leaderboard) Standardized energy estimates for specialized and general AI models, by task.\ 
-[Electricity Maps](https://app.electricitymaps.com/map/fifteen_minutes?signal=carbon-intensity) Real-time electricity grids.\
-[OpenRouter](https://openrouter.ai/) Per request access to a variety of LLMs with benchmarks.\ 
-[Vast AI](https://vast.ai/) On-demand GPU infrastructure with data center locations.\ 
-[Aleph Alpha Kolibri-1](https://huggingface.co/Aleph-Alpha/Kolibri-1) Detailed open LLM model card with energy and good documentation. 
+[CLEER Dashboard](https://cleerdash.sustainableaigroup.com/) Sustainability estimates for LLMs.  
+[AI Energy Score](https://huggingface.co/spaces/AIEnergyScore/Leaderboard) Standardized energy estimates for specialized and general AI models, by task.   
+[Electricity Maps](https://app.electricitymaps.com/map/fifteen_minutes?signal=carbon-intensity) Real-time electricity grids.  
+[OpenRouter](https://openrouter.ai/) Per request access to a variety of LLMs with benchmarks.   
+[Vast AI](https://vast.ai/) On-demand GPU infrastructure with data center locations.   
+[Aleph Alpha Kolibri-1](https://huggingface.co/Aleph-Alpha/Kolibri-1) Detailed open LLM model card with energy and good documentation.   
 
 The tutorial is split into three notebooks. Each runs on its own, but they
 are meant to be read in this order:
