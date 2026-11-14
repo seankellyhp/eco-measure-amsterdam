@@ -22,7 +22,7 @@ how to use it. How far each combination has been tested:
 |---|---|
 | Linux, Claude Code | tested: install, tracking, reports, tokens |
 | macOS, Windows (native, no WSL) | written for both, but not yet run on either; `carbon doctor` tells you whether it works on yours |
-| Codex CLI | the skill installs and the energy measurement works the same way, but tokens are not counted yet, so the report has only the CodeCarbon block; not yet tried in a real Codex session |
+| Codex CLI | tested: install, tracking, reports, tokens |
 
 ---
 
@@ -62,8 +62,7 @@ so your agent can still call it.
 `carbon install-skill` installs the skill for every agent it finds
 (`~/.claude` for Claude Code, `~/.codex` for Codex); pick one with
 `--agent claude-code` or `--agent codex`. Then restart your agent and type
-`/carbon` (Claude Code) or ask for "carbon tracking" (Codex; see the status
-table above for what Codex does not have yet).
+`/carbon` (Claude Code) or ask for "carbon tracking" (Codex).
 
 `carbon doctor` checks everything and runs a 12-second test measurement. Every
 line should say `ok`; any `PROBLEM` line says what to do.

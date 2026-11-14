@@ -102,7 +102,7 @@ OPENROUTER_API_KEY=sk-or-...
 an agent's own work: what the computer used while the agent worked (CodeCarbon),
 how many tokens the session used, and an estimate of what generating them cost
 in the provider's datacenter (EcoLogits). Tested on Linux; might work on Windows and Mac. 
-Currently only supports Claude. Submissions welcome. 
+Works with Claude Code and Codex. Submissions welcome. 
 
 ```bash
 uv tool install ./carbon_skill
