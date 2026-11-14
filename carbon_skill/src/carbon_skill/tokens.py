@@ -35,6 +35,7 @@ from pathlib import Path
 HOME = Path.home()
 # Claude Code keeps its data in $CLAUDE_CONFIG_DIR when set, ~/.claude otherwise.
 CLAUDE_DIR = Path(os.environ.get("CLAUDE_CONFIG_DIR") or HOME / ".claude")
+CODEX_DIR = Path(os.environ.get("CODEX_HOME") or HOME / ".codex")
 
 
 @dataclass
@@ -188,6 +189,72 @@ def read_pi(path: str, start: datetime, end: datetime, totals: Totals) -> None:
         )
 
 
+def read_codex(path: str, start: datetime, end: datetime, totals: Totals) -> None:
+    """Codex token_usage_record rows, one billed response per response_id.
+
+    Codex records cumulative thread usage alongside each response's own usage.
+    Count only `payload.usage`, which is per-response, and subtract cached and
+    cache-write input from input_tokens because Codex reports those as subsets
+    of the input total. `reasoning_output_tokens` is a subset of output_tokens.
+    """
+    models_by_turn: dict[str, str] = {}
+    provider = ""
+    pending: list[tuple[datetime, str, dict, str]] = []
+    seen: set[str] = set()
+
+    for rec in _iter_lines(path):
+        kind = rec.get("type")
+        payload = rec.get("payload")
+        if not isinstance(payload, dict):
+            continue
+
+        if kind == "session_meta":
+            provider = payload.get("model_provider") or provider
+            continue
+
+        if kind == "turn_context":
+            turn_id = payload.get("turn_id")
+            model = payload.get("model")
+            if turn_id and model:
+                models_by_turn[turn_id] = model
+            continue
+
+        if kind != "token_usage_record":
+            continue
+
+        usage = payload.get("usage")
+        ts = _parse_ts(rec.get("timestamp"))
+        if not isinstance(usage, dict) or ts is None or not (start <= ts <= end):
+            continue
+
+        response_id = payload.get("response_id") or rec.get("id")
+        if not response_id:
+            response_id = f"{payload.get('turn_id', '')}:{ts.isoformat()}"
+        if response_id in seen:
+            continue
+        seen.add(response_id)
+        pending.append((ts, response_id, usage, payload.get("turn_id") or ""))
+
+    for ts, _, usage, turn_id in pending:
+        model = models_by_turn.get(turn_id, "unknown")
+        if provider and model != "unknown" and "/" not in model:
+            model = f"{provider}/{model}"
+        cached = int(usage.get("cached_input_tokens") or 0)
+        cache_write = int(usage.get("cache_write_input_tokens") or 0)
+        input_tokens = int(usage.get("input_tokens") or 0)
+        totals.calls.append(
+            Call(
+                ts=ts,
+                model=model,
+                fresh=max(0, input_tokens - cached - cache_write),
+                cache_read=cached,
+                cache_write=cache_write,
+                output=int(usage.get("output_tokens") or 0),
+                thinking=int(usage.get("reasoning_output_tokens") or 0),
+            )
+        )
+
+
 # --------------------------------------------------------------------------- #
 # session resolution - runs once, at carbon_start
 # --------------------------------------------------------------------------- #
@@ -206,6 +273,13 @@ HARNESSES = {
         "id_env": ("PI_SESSION_ID",),
         # pi names files <stamp>_<uuid>.jsonl, so match on the uuid suffix.
         "by_id": "*/*{id}.jsonl",
+    },
+    "codex": {
+        "reader": read_codex,
+        "root": CODEX_DIR / "sessions",
+        "id_env": ("CODEX_SESSION_ID", "CODEX_THREAD_ID"),
+        # Codex nests rollout files under year/month/day directories.
+        "by_id": "**/rollout-*{id}.jsonl",
     },
 }
 
@@ -263,7 +337,7 @@ def resolve_session(pid: str, cwd: str) -> dict | None:
             sid = os.environ.get(var)
             if not sid:
                 continue
-            hits = glob(str(spec["root"] / spec["by_id"].format(id=sid)))
+            hits = glob(str(spec["root"] / spec["by_id"].format(id=sid)), recursive=True)
             if hits:
                 return {
                     "harness": name,
