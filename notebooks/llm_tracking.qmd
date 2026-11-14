@@ -59,13 +59,11 @@ sentiment analysis. As model complexity increases, so too does the compute
 time, memory, and energy needs.
 
 In the code below I have included an example of estimating the emissions of
-external API calls to Large Language Models for sentiment analysis. When I ran
-this on the sample, the it cost XXX and the estimated energy use was XXX to
-XXX. That is X times more than the Dictionary approach. Of course, LLMs have much more context, so their results
+external API calls to Large Language Models for sentiment analysis. Of course, LLMs have much more context, so their results
 are often an improvement over either of these simpler approaches. We explored
 the tradeoff between Performance and Energy Use across several classification
 tasks including sentiment analysis, multi-class classification, and named
-entitity recognition [@hamiltonpalicki:2026:dlu]. We found that even small
+entity recognition [@hamiltonpalicki:2026:dlu]. We found that even small
 reasoning LLMs used up to 150,000 times more energy than Dictionaries for
 sentiment analysis, while also doubling the performance.
 
